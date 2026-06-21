@@ -224,7 +224,7 @@ Because the tool edits other teams' code, it must be auditable:
 | 1 | Advisory parser + dedupe engine (filter chain, clean extraction, Maven-aware dedupe, skipped/conflict logs) | No |
 | 2 | Maven-aware version comparison module | No |
 | 3 ✅ | Pom fixer — resolution classifier + apply: direct / property / managed (`<dependencyManagement>` pin) / transitive pin, + dry-run diff + resolution log | Optional (hard cases) |
-| 4 | Build runner (`mvn clean install`) + green-build gating + `mvn dependency:tree` resolution check | No |
+| 4 ✅ | Build runner (`mvn clean install`) + green-build gating + `mvn dependency:tree` resolution check (reactor-aware: run at aggregator root, per-module check) | No |
 | 5 | MCP server wrapper exposing core/ as tools | No (LLM uses it) |
 
 Phases 1–5 constitute **v1** (manual Excel → fix → green build). Everything beyond v1 —
@@ -312,7 +312,8 @@ remediation strategies v1 deliberately leaves manual (§7).
   v1 only *suggests* this; here it becomes an applied strategy.
 - **`<exclusions>`-based surgery** and **auto-bumping the introducing direct dependency**
   for transitive vulns where a plain `<dependencyManagement>` pin is insufficient.
-- Deeper multi-module reactor support (version declared in a parent/aggregator pom).
+- Reactor-aware *fix application* (build/verify of reactors already works in Phase 4):
+  auto-choosing whether a pin goes in the parent/aggregator pom vs a specific module pom.
 - Property-indirection chains and profiles.
 - Each added case ships with tests against real-world pom fixtures.
 

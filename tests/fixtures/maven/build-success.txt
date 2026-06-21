@@ -1,0 +1,9 @@
+[INFO] Scanning for projects...
+[INFO] Building single-app 1.0.0
+[INFO] --- maven-compiler-plugin:3.11.0:compile (default-compile) @ single-app ---
+[INFO] --- maven-jar-plugin:3.4.1:jar (default-jar) @ single-app ---
+[INFO] --- maven-install-plugin:3.1.1:install (default-install) @ single-app ---
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  6.214 s

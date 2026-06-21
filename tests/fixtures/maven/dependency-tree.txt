@@ -1,0 +1,13 @@
+[INFO] Scanning for projects...
+[INFO]
+[INFO] --------------------------< com.example:single-app >--------------------------
+[INFO] Building single-app 1.0.0
+[INFO] --- maven-dependency-plugin:3.6.0:tree (default-cli) @ single-app ---
+[INFO] com.example:single-app:jar:1.0.0
+[INFO] +- io.netty:netty-handler:jar:4.2.15.Final:compile
+[INFO] +- io.netty:netty-codec-dns:jar:4.2.13.Final:compile
+[INFO] +- com.fasterxml.jackson.core:jackson-databind:jar:2.15.4:compile
+[INFO] \- org.springframework:spring-core:jar:6.2.11:compile
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------

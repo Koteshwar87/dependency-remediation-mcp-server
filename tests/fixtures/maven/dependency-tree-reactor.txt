@@ -1,0 +1,18 @@
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO]
+[INFO] module-a
+[INFO] module-b
+[INFO]
+[INFO] --- maven-dependency-plugin:3.6.0:tree (default-cli) @ module-a ---
+[INFO] com.example:module-a:jar:1.0.0
+[INFO] +- io.netty:netty-handler:jar:4.2.15.Final:compile
+[INFO] \- com.fasterxml.jackson.core:jackson-databind:jar:2.15.4:compile
+[INFO]
+[INFO] --- maven-dependency-plugin:3.6.0:tree (default-cli) @ module-b ---
+[INFO] com.example:module-b:jar:1.0.0
+[INFO] \- com.fasterxml.jackson.core:jackson-databind:jar:2.13.0:compile
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------

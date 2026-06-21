@@ -62,9 +62,9 @@ src/dep_remediation/
 │   ├── advisory_parser.py      # read Excel, filter, extract, dedupe -> normalized list   [Phase 1 ✅]
 │   ├── version_compare.py      # Maven-aware version comparison                            [Phase 2 ✅]
 │   ├── pom_fixer.py            # classify resolution + apply upgrades to pom.xml            [Phase 3 ✅]
-│   └── build_runner.py         # run mvn clean install, interpret result                   [Phase 4 ⬜]
-├── cli.py                      # plain CLI adapter (parse / fix subcommands)                [✅]
-└── mcp_server.py               # FastMCP server (parse_advisory + apply_fixes tools)        [Phase 5 — partial ✅]
+│   └── build_runner.py         # mvn clean install + dependency:tree resolution check       [Phase 4 ✅]
+├── cli.py                      # plain CLI adapter (parse / fix / verify subcommands)        [✅]
+└── mcp_server.py               # FastMCP server (parse_advisory + apply_fixes + verify_build) [Phase 5 — partial ✅]
 ```
 
 Entry points (from `pyproject.toml`): `dep-remediation` (CLI) and
@@ -74,8 +74,9 @@ Entry points (from `pyproject.toml`): `dep-remediation` (CLI) and
 
 ## Getting started
 
-`pyproject.toml` is the single source of truth for dependencies — works with either
-[uv](https://docs.astral.sh/uv/) (recommended) or plain pip.
+Requires **Python 3.11+** (and a Maven install — `mvn` on PATH or a project `mvnw`
+wrapper — for the `verify` step). `pyproject.toml` is the single source of truth for
+dependencies — works with either [uv](https://docs.astral.sh/uv/) (recommended) or plain pip.
 
 ```bash
 # uv
@@ -107,12 +108,14 @@ App: app-alpha
   Skipped (other owner):   1
   Skipped (container/OS):  2
   Skipped (base image):    1
+  Skipped (missing data):  0
 
 Unique libraries to fix: 4
-  com.fasterxml.jackson.core:jackson-databind   2.13.0        -> 2.15.4
-  io.netty:netty-codec-dns                      4.2.4.Final   -> 4.2.13.Final
-  io.netty:netty-handler                        4.2.4.Final   -> 4.2.15.Final
-  org.springframework:spring-core               5.3.32        -> 6.2.11
+  LIBRARY                                          CURRENT        -> RECOMMENDED
+  com.fasterxml.jackson.core:jackson-databind      2.13.0         -> 2.15.4
+  io.netty:netty-codec-dns                         4.2.4.Final    -> 4.2.13.Final
+  io.netty:netty-handler                           4.2.4.Final    -> 4.2.15.Final
+  org.springframework:spring-core                  5.3.32         -> 6.2.11
 
 Conflicts resolved (highest version wins): 1
   io.netty:netty-handler: chose 4.2.15.Final  from ['4.2.13.Final', '4.2.15.Final']
@@ -126,14 +129,24 @@ BOM-managed/transitive libraries. **Dry-run by default** (prints the diff); pass
 `--apply` to write. Idempotent and never downgrades.
 
 ```bash
-# Dry-run: show what would change
+# Dry-run: show the resolution log + diff (add --json for machine-readable output)
 dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha
 
 # Apply the changes
 dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha --apply
 ```
 
-Example dry-run diff (a parent-managed/transitive pom gets a pinned block):
+Each finding is reported with its resolution class and the strategy applied:
+
+```
+Actions: 4
+  [transitive/add-pin]   com.fasterxml.jackson.core:jackson-databind: (managed/transitive) -> 2.15.4  (added <dependencyManagement> pin)
+  [transitive/add-pin]   io.netty:netty-codec-dns: (managed/transitive) -> 4.2.13.Final  (added <dependencyManagement> pin)
+  [direct/edit-version]  io.netty:netty-handler: 4.2.4.Final -> 4.2.15.Final
+  [transitive/add-pin]   org.springframework:spring-core: (managed/transitive) -> 6.2.11  (added <dependencyManagement> pin)
+```
+
+followed by a unified diff — e.g. a parent-managed/transitive pom gets a pinned block:
 
 ```diff
 +    <dependencyManagement>
@@ -148,6 +161,30 @@ Example dry-run diff (a parent-managed/transitive pom gets a pinned block):
 +    </dependencyManagement>
 ```
 
+### Verify the build (Phase 4)
+
+Runs `mvn clean install` and gates on a **green build**, then runs `mvn dependency:tree`
+to confirm each finding's *resolved* version is actually the recommended one (a pin can be
+silently overridden by a BOM). Point it at the **aggregator root** for a multi-module
+reactor — resolution is checked across every module.
+
+```bash
+# build-only gate
+dep-remediation verify ./my-app
+
+# build + resolved-version check against the advisory
+dep-remediation verify ./my-app --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha
+
+# fix and verify in one shot (only chains after a successful --apply)
+dep-remediation fix ./my-app/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha --apply --verify
+```
+
+Overall success requires the build green **and** every finding resolved; unresolved
+findings are surfaced for manual review. On failure the result carries the log tail, the
+failing goal, and the just-applied bumps (likely culprits) so recovery can be driven
+interactively. **Honest limit:** a green build proves the project *compiles*, not that a
+forced transitive pin is runtime-safe.
+
 ### Run the tests
 
 ```bash
@@ -160,7 +197,7 @@ pytest -q
 python -m dep_remediation.core.version_compare   # runs the built-in self-tests
 ```
 
-### Run as an MCP server (Phase 5 — `parse_advisory` + `apply_fixes` tools)
+### Run as an MCP server (Phase 5 — `parse_advisory` + `apply_fixes` + `verify_build`)
 
 The server speaks MCP over **stdio**, so an MCP client (VS Code / IntelliJ AI assistant,
 Claude Desktop, etc.) launches it. Run directly:
@@ -186,9 +223,10 @@ Tools exposed today:
 - `parse_advisory(xlsx_path, app, base_image_filter=True)` — the deduped fix list.
 - `apply_fixes(pom_path, xlsx_path, app, apply=False)` — classify + apply upgrades to a
   pom; dry-run by default, returns the resolution log, manual-review bucket, and diff.
+- `verify_build(project_dir, xlsx_path="", app="")` — `mvn clean install` + (optional)
+  resolved-version check; returns the build result with actionable failure context.
 
-`verify_build` (Phase 4) follows. (stdio transport reserves stdout for JSON-RPC; the
-server logs to stderr.)
+(stdio transport reserves stdout for JSON-RPC; the server logs to stderr.)
 
 ---
 
@@ -218,7 +256,14 @@ Because the tool edits other teams' code it is auditable by design:
 - **Dry-run by default** — show the diff, apply on confirmation.
 - **Skipped-rows log** — how many rows dropped and why.
 - **Conflict log** — which duplicate versions were seen and which won.
-- **Build gating** — success is never claimed on a broken build.
+- **Resolution log** — per finding: how it resolves (direct / property / managed /
+  transitive) and the strategy applied (in-place edit vs. `<dependencyManagement>` pin),
+  plus a manual-review bucket for anything not safely fixable.
+- **Idempotent, no-downgrade** edits — re-running a fix is a no-op; an existing higher
+  version is never lowered.
+- **Build gating + resolved-version check** — success is never claimed on a broken build,
+  and `mvn dependency:tree` must confirm each finding actually resolved to the recommended
+  version (a pin silently overridden by a BOM is flagged, not hidden).
 
 ## Roadmap (Phase 2)
 
