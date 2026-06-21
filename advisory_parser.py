@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from version_compare import compare, max_version
+from version_compare import version_key
 
 # Column names as seen in the real sheet. Centralized so a rename is a one-line fix.
 COL_OWNER = "owner"
@@ -45,14 +45,14 @@ class Finding:
 class Conflict:
     coordinate: str
     chosen: str
-    candidates: list
+    candidates: list[str]
 
 
 @dataclass
 class Report:
     app: str
-    findings: list = field(default_factory=list)        # list[Finding]
-    conflicts: list = field(default_factory=list)        # list[Conflict]
+    findings: list[Finding] = field(default_factory=list)
+    conflicts: list[Conflict] = field(default_factory=list)
     rows_total: int = 0
     rows_for_app: int = 0
     rows_java: int = 0
@@ -67,7 +67,9 @@ class Report:
 
 
 def _norm(x) -> str:
-    return "" if x is None or (isinstance(x, float) and pd.isna(x)) else str(x).strip()
+    if x is None or (not isinstance(x, str) and pd.isna(x)):
+        return ""
+    return str(x).strip()
 
 
 def _coord_for_row(row) -> str:
@@ -116,8 +118,8 @@ def parse(xlsx_path: str, app: str, *, base_image_filter: bool = True) -> Report
             entry["current"] = cur
 
     for coord in sorted(by_coord):
-        recs = sorted(by_coord[coord]["recs"], key=__import__("functools").cmp_to_key(compare))
-        chosen = max_version(recs)
+        recs = sorted(by_coord[coord]["recs"], key=version_key)  # ascending, Maven-aware
+        chosen = recs[-1]                                        # highest wins
         rep.findings.append(Finding(
             coordinate=coord,
             current_version=by_coord[coord]["current"],
@@ -161,7 +163,7 @@ def main():
 
     rep = parse(args.xlsx, args.app, base_image_filter=not args.no_base_image_filter)
     if args.json:
-        print(json.dumps(rep.to_dict(), indent=2, default=lambda o: asdict(o)))
+        print(json.dumps(rep.to_dict(), indent=2))
     else:
         print_report(rep)
 
