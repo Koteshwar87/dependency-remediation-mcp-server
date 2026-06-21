@@ -42,25 +42,35 @@ Do not hand-edit the dedupe result; if a chosen version looks wrong, check it wi
 ### 2. Apply to pom.xml (Phase 3 — `pom_fixer.py`, not built yet)
 
 When implemented: run **dry-run first**, show the diff, apply only on confirmation.
-Versions may live in a direct `<version>`, a `<properties>` entry, the
-`spring-boot-starter-parent`, `<dependencyManagement>`/imported BOM, or a parent pom in
-a reactor. Anything the engine can't safely place goes into the **needs-manual-review**
-bucket — list it explicitly; never guess-edit.
+The engine first **classifies how each coordinate resolves**, then applies:
+
+- `direct` (literal `<version>`) → edit in place
+- `property` (`<properties>` entry) → edit the property value
+- `managed` (parent / `spring-boot-starter-parent` / imported BOM) → **add/update a
+  `<dependencyManagement>` pin** (the default strategy)
+- `transitive` (not in the pom at all) → **add a `<dependencyManagement>` pin**
+- `bom-coverable` → *suggest* the BOM/parent bump → manual review (not auto-applied)
+- ambiguous → **needs-manual-review** bucket — list it explicitly; never guess-edit.
 
 ### 3. Verify the build (Phase 4 — `build_runner.py`, not built yet)
 
 ```bash
 mvn clean install
+mvn dependency:tree -Dincludes=<groupId>:<artifactId>   # confirm the resolved version
 ```
 
-**Never report success unless the build is green.** If it breaks, surface the failure
-(and the diff that caused it). Re-running must be idempotent — no double-applied bumps.
+**Never report success unless the build is green AND `dependency:tree` confirms each
+finding resolved to the recommended version** (a pin can be silently overridden). If the
+build breaks, surface the failure and the diff that caused it. Re-running must be
+idempotent — pins are updated in place, no double-applied bumps. Note the honest limit: a
+green build proves it compiles, not that a forced transitive pin is runtime-safe.
 
 ## Guardrails
 
-- Stay in v1 scope: Spring Boot **Maven**, **Java** libs, up to a green build. Mend API,
-  container/OS packages, Gradle, transitive resolution, and automated PRs are Phase 2 —
-  don't implement them unless asked.
+- Stay in v1 scope: Spring Boot **Maven**, **Java** libs (including BOM-managed and
+  transitive, via `<dependencyManagement>` pins), up to a green build. Mend API,
+  container/OS packages, Gradle, automated PRs, `<exclusions>`-based surgery, and
+  auto-applying BOM/parent upgrades are Phase 2 — don't implement them unless asked.
 - Keep `core/` deterministic and network-free.
 - Be transparent: always relay the skipped-rows log and conflict log, not just the final
   list — that auditability is the point of the tool.

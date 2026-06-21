@@ -33,10 +33,16 @@ flag it rather than silently diverging.
 
 ## Scope guardrails (v1)
 
-In scope: Spring Boot **Maven**, **Java library** findings, up to a green build.
+In scope: Spring Boot **Maven**, **Java library** findings, up to a green build —
+**including BOM/parent-managed and purely-transitive findings**, remediated via a
+`<dependencyManagement>` version pin (default strategy) and verified with
+`mvn dependency:tree`. See plan §3 and §7 for the resolution-class classifier
+(direct / property / managed / transitive / bom-coverable / ambiguous).
+
 Out of scope (do not implement without being asked): Mend/portal APIs, container/OS
-package fixes, Gradle, transitive resolution, automated PRs. These are Phase 2 — see
-section 13 of the plan.
+package fixes, Gradle, automated PRs, `<exclusions>`-based surgery, and auto-applying
+BOM/parent upgrades (v1 only *suggests* those → manual-review bucket). These are Phase 2 —
+see section 13 of the plan.
 
 ## Layout
 
