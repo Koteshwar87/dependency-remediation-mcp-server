@@ -221,19 +221,21 @@ Because the tool edits other teams' code, it must be auditable:
 
 | Phase | Deliverable | LLM needed? |
 |-------|-------------|-------------|
-| 1 | Advisory parser + dedupe engine (filter chain, clean extraction, Maven-aware dedupe, skipped/conflict logs) | No |
-| 2 | Maven-aware version comparison module | No |
+| 1 ✅ | Advisory parser + dedupe engine (filter chain, clean extraction, Maven-aware dedupe, skipped/conflict logs) | No |
+| 2 ✅ | Maven-aware version comparison module | No |
 | 3 ✅ | Pom fixer — resolution classifier + apply: direct / property / managed (`<dependencyManagement>` pin) / transitive pin, + dry-run diff + resolution log | Optional (hard cases) |
 | 4 ✅ | Build runner (`mvn clean install`) + green-build gating + `mvn dependency:tree` resolution check (reactor-aware: run at aggregator root, per-module check) | No |
-| 5 | MCP server wrapper exposing core/ as tools | No (LLM uses it) |
+| 5 ✅ | MCP server wrapper exposing core/ as tools (`parse_advisory` + `apply_fixes` + `verify_build`), protocol-tested; CLI fallback (`parse`/`fix`/`verify`); client setup in `docs/mcp-setup.md` | No (LLM uses it) |
 
-Phases 1–5 constitute **v1** (manual Excel → fix → green build). Everything beyond v1 —
-Mend integration, automated PRs, LLM-assisted build recovery, scale — is captured in
-section 13 (Phase 2 roadmap). Note: `mvn dependency:tree` (Phase 3 classify + Phase 4
-verify) shares the Maven toolchain the build runner already needs.
+**Phases 1–5 are complete — v1 is delivered** (manual Excel → fix → green build, via a CLI
+and a verified MCP server). Everything beyond v1 — Mend integration, automated PRs,
+LLM-assisted build recovery, scale — is captured in section 13 (Phase 2 roadmap). Note:
+`mvn dependency:tree` (Phase 3 classify + Phase 4 verify) shares the Maven toolchain the
+build runner already needs.
 
-**Phase 1 is the immediate next step** — standalone, testable, and independent of the
-harder pom work.
+**Deferred Phase-5 nice-to-haves** (not blocking v1): friendly structured error results
+over MCP, a `remediate` convenience tool/command chaining parse→fix→verify, and optional
+MCP `prompts`/`resources` surfaces. Tracked under §13.5 (productization).
 
 ---
 

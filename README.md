@@ -64,7 +64,7 @@ src/dep_remediation/
 │   ├── pom_fixer.py            # classify resolution + apply upgrades to pom.xml            [Phase 3 ✅]
 │   └── build_runner.py         # mvn clean install + dependency:tree resolution check       [Phase 4 ✅]
 ├── cli.py                      # plain CLI adapter (parse / fix / verify subcommands)        [✅]
-└── mcp_server.py               # FastMCP server (parse_advisory + apply_fixes + verify_build) [Phase 5 — partial ✅]
+└── mcp_server.py               # FastMCP server (parse_advisory + apply_fixes + verify_build) [Phase 5 ✅]
 ```
 
 Entry points (from `pyproject.toml`): `dep-remediation` (CLI) and
@@ -205,6 +205,10 @@ Claude Desktop, etc.) launches it. Run directly:
 ```bash
 dep-remediation-mcp           # or: uv run dep-remediation-mcp
 ```
+
+> **Full setup guide** (VS Code, IntelliJ, Claude Desktop configs + troubleshooting):
+> [`docs/mcp-setup.md`](docs/mcp-setup.md). The protocol surface is covered by
+> `tests/test_mcp_server.py` (an in-process MCP client round-trip).
 
 Example client config (`mcpServers` entry):
 
