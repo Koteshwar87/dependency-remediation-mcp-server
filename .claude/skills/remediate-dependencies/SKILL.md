@@ -39,18 +39,29 @@ Report back from the output:
 Do not hand-edit the dedupe result; if a chosen version looks wrong, check it with
 `dep_remediation.core.version_compare.compare` rather than overriding by eye.
 
-### 2. Apply to pom.xml (Phase 3 — `pom_fixer.py`, not built yet)
+### 2. Apply to pom.xml (Phase 3 — `pom_fixer.py`, available now)
 
-When implemented: run **dry-run first**, show the diff, apply only on confirmation.
-The engine first **classifies how each coordinate resolves**, then applies:
+```bash
+# dry-run (shows the diff; or: the apply_fixes MCP tool with apply=False)
+dep-remediation fix <pom.xml> --from-advisory <advisory.xlsx> --app <owner>
+# write the changes
+dep-remediation fix <pom.xml> --from-advisory <advisory.xlsx> --app <owner> --apply
+```
+
+**Dry-run first**, show the diff, apply only on confirmation. The engine first
+**classifies how each coordinate resolves**, then applies (static analysis, no Maven):
 
 - `direct` (literal `<version>`) → edit in place
 - `property` (`<properties>` entry) → edit the property value
 - `managed` (parent / `spring-boot-starter-parent` / imported BOM) → **add/update a
   `<dependencyManagement>` pin** (the default strategy)
 - `transitive` (not in the pom at all) → **add a `<dependencyManagement>` pin**
-- `bom-coverable` → *suggest* the BOM/parent bump → manual review (not auto-applied)
-- ambiguous → **needs-manual-review** bucket — list it explicitly; never guess-edit.
+- `ambiguous` (unresolvable property) → **needs-manual-review** bucket — list it
+  explicitly; never guess-edit.
+
+Relay the resolution log (per finding: class → strategy) and the diff. The fixer is
+idempotent and never downgrades (re-running on a fixed pom is a no-op). BOM/parent
+upgrades are not auto-applied in v1.
 
 ### 3. Verify the build (Phase 4 — `build_runner.py`, not built yet)
 

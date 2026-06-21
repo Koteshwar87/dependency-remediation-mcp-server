@@ -223,7 +223,7 @@ Because the tool edits other teams' code, it must be auditable:
 |-------|-------------|-------------|
 | 1 | Advisory parser + dedupe engine (filter chain, clean extraction, Maven-aware dedupe, skipped/conflict logs) | No |
 | 2 | Maven-aware version comparison module | No |
-| 3 | Pom fixer — resolution classifier + apply: direct / property / managed (`<dependencyManagement>` pin) / transitive pin, + dry-run diff + resolution log | Optional (hard cases) |
+| 3 ✅ | Pom fixer — resolution classifier + apply: direct / property / managed (`<dependencyManagement>` pin) / transitive pin, + dry-run diff + resolution log | Optional (hard cases) |
 | 4 | Build runner (`mvn clean install`) + green-build gating + `mvn dependency:tree` resolution check | No |
 | 5 | MCP server wrapper exposing core/ as tools | No (LLM uses it) |
 

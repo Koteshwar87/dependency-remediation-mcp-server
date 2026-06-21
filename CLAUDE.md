@@ -54,10 +54,10 @@ Standard `src/` package (`src/dep_remediation/`). `core/` is the deterministic e
 |--------|-------|---------|
 | `core/advisory_parser.py` | 1 ✅ | Read Excel, apply filter chain, extract fields, dedupe → `Report` |
 | `core/version_compare.py` | 2 ✅ | Maven-aware `compare()` / `version_key` / `max_version()` |
-| `core/pom_fixer.py` | 3 ⬜ | Apply version upgrades to `pom.xml` (direct / property / parent / BOM) |
-| `core/build_runner.py` | 4 ⬜ | Run `mvn clean install`, interpret result, gate on green |
-| `cli.py` | ✅ | `dep-remediation` entry point — argparse over `core/` |
-| `mcp_server.py` | 5 (partial ✅) | `dep-remediation-mcp` FastMCP server; `parse_advisory` tool live |
+| `core/pom_fixer.py` | 3 ✅ | Classify resolution (direct/property/managed/transitive) + apply upgrades to `pom.xml` (`plan_fixes`/`apply_fixes` → `FixResult`) |
+| `core/build_runner.py` | 4 ⬜ | Run `mvn clean install` + `dependency:tree`, interpret result, gate on green |
+| `cli.py` | ✅ | `dep-remediation` entry point — `parse` / `fix` subcommands over `core/` |
+| `mcp_server.py` | 5 (partial ✅) | `dep-remediation-mcp` FastMCP server; `parse_advisory` + `apply_fixes` tools live |
 
 `core/advisory_parser.py` imports `core/version_compare.py` via a **relative** import
 (`from .version_compare import version_key`). Core modules are import-only (no argparse
@@ -83,9 +83,13 @@ parsing for the fix. Column names are centralized as `COL_*` constants in
 uv sync                       # or: pip install -e ".[dev]"
 
 # Parse an advisory for an app  (or: python -m dep_remediation.cli ...)
-dep-remediation tests/fixtures/dummy_advisory.xlsx --app app-alpha [--json] [--no-base-image-filter]
+dep-remediation parse tests/fixtures/dummy_advisory.xlsx --app app-alpha [--json] [--no-base-image-filter]
 
-# Version-comparison self-tests
+# Fix a pom (dry-run by default; --apply writes)
+dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha [--apply]
+
+# Tests + version-comparison self-tests
+pytest -q
 python -m dep_remediation.core.version_compare
 
 # Run the MCP server (stdio; normally launched by an MCP client)
