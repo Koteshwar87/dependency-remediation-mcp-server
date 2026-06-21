@@ -57,7 +57,7 @@ Standard `src/` package (`src/dep_remediation/`). `core/` is the deterministic e
 | `core/pom_fixer.py` | 3 ✅ | Classify resolution (direct/property/managed/transitive) + apply upgrades to `pom.xml` (`plan_fixes`/`apply_fixes` → `FixResult`) |
 | `core/build_runner.py` | 4 ✅ | `mvn clean install` + `dependency:tree` resolution check (reactor-aware), green-build gating (`verify` → `BuildResult`) |
 | `cli.py` | ✅ | `dep-remediation` entry point — `parse` / `fix` / `verify` subcommands over `core/` |
-| `mcp_server.py` | 5 (partial ✅) | `dep-remediation-mcp` FastMCP server; `parse_advisory` + `apply_fixes` + `verify_build` tools live |
+| `mcp_server.py` | 5 ✅ | `dep-remediation-mcp` FastMCP server; `parse_advisory` + `apply_fixes` + `verify_build` tools, protocol-tested |
 
 `core/advisory_parser.py` imports `core/version_compare.py` via a **relative** import
 (`from .version_compare import version_key`). Core modules are import-only (no argparse
@@ -109,6 +109,10 @@ dep-remediation-mcp
   dataclasses (`Finding`, `Conflict`, `Report`) over side effects.
 - **MCP/stdio: never `print()` to stdout** — stdout carries JSON-RPC. Log to stderr
   (Python `logging`). This applies to `mcp_server.py` and anything it imports at runtime.
+- MCP protocol tests use the SDK's in-memory client:
+  `create_connected_server_and_client_session(mcp)` (auto-initializes) — no subprocess, no
+  Maven. Don't invoke `verify_build` from protocol tests (it shells out).
+- Client install/onboarding instructions live in `docs/mcp-setup.md`.
 - When adding a new pom-structure case or version edge case, add a fixture/test for it.
 - Don't introduce a network call into `core/`. Sources (Excel today, Mend later) belong
   behind a pluggable source interface (Phase 2.1).
