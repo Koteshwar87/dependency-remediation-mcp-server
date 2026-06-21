@@ -27,8 +27,15 @@ libraries, applied through one LLM-agnostic interface that runs in any team's ID
 v1 covers **Spring Boot Maven** apps and stops at a **green build**. Raising a PR,
 Mend API integration, and LLM-assisted build recovery are Phase 2 (see the plan).
 
+Transitive / BOM-managed Java findings **are** in scope: they're remediated via a
+`<dependencyManagement>` version pin, verified with `mvn dependency:tree` (this matters
+because the advisory scans the resolved artifact, so most findings are managed/transitive,
+not hand-pinned `<version>` tags).
+
 **Non-goals (v1):** no Mend/portal connection, no container/OS package remediation,
-no Gradle, no transitive resolution, no automated PRs.
+no Gradle, no automated PRs. Also deferred: `<exclusions>`-based surgery and auto-applying
+BOM/parent upgrades (those are *suggested* for manual review). See the plan for the exact
+boundary.
 
 ---
 
@@ -38,8 +45,10 @@ no Gradle, no transitive resolution, no automated PRs.
 advisory.xlsx ──► filter (owner + Java + not base-image)
               ──► extract (DetailedName, Version, RecommendedVersion)
               ──► dedupe (highest RecommendedVersion wins, Maven-aware)
-              ──► apply to pom.xml (dry-run by default)
-              ──► mvn clean install (must be green)
+              ──► classify resolution (direct / property / managed / transitive)
+              ──► apply to pom.xml: edit <version>/property, or add a
+                  <dependencyManagement> pin for managed/transitive (dry-run by default)
+              ──► mvn clean install (green) + mvn dependency:tree (resolved version check)
 ```
 
 ### Architecture

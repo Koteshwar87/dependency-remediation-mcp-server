@@ -2,7 +2,7 @@
 
 **Status:** Design locked, ready to build
 **Scope:** Spring Boot Maven applications
-**Last updated:** 2026-06-21
+**Last updated:** 2026-06-21 (rev: transitive/BOM-managed remediation brought into scope)
 
 ---
 
@@ -21,8 +21,13 @@ Given the advisory Excel and an app name, the tool will:
 1. Filter the sheet down to the app's fixable Java library findings.
 2. Extract each library's coordinates, current version, and recommended version.
 3. Deduplicate to one target version per library (highest recommended version wins).
-4. Apply those version upgrades to the Spring Boot `pom.xml`.
-5. Run `mvn clean install` and confirm the build succeeds.
+4. **Classify how each coordinate resolves in the project** — direct, property,
+   BOM/parent-managed, or purely transitive (see §7).
+5. Apply those version upgrades to the Spring Boot `pom.xml` — editing the direct
+   `<version>`/property where present, or adding a `<dependencyManagement>` pin for
+   managed/transitive findings.
+6. Run `mvn clean install` **and** confirm via `mvn dependency:tree` that the resolved
+   versions are now the recommended ones.
 
 **v1 stops at a successful build.** Raising a PR is explicitly out of scope for v1
 (planned as a thin add-on later).
@@ -38,8 +43,20 @@ over the same engine is provided as a zero-LLM fallback. (MCP access confirmed a
 - No connection to Mend or any portal/API — the developer supplies the Excel.
 - No container/OS package remediation (those are filtered out).
 - No Gradle support — Maven only.
-- No transitive-dependency resolution — operate on what the advisory lists.
 - No automated PR creation.
+
+### Transitive / managed dependencies — boundary (clarified)
+
+The advisory scans the **resolved/built artifact** (rows carry `LocationPath` jars,
+"detected in Maven library manager"), so most flagged libraries are **BOM/parent-managed
+or purely transitive**, not hand-pinned `<version>` tags. Ignoring them would make v1
+punt on the majority of real findings, so v1 **does** handle them:
+
+- **In scope:** remediating BOM/parent-managed and purely-transitive Java findings via a
+  `<dependencyManagement>` version pin, verified with `mvn dependency:tree` (see §7–§8).
+- **Out of scope (v1):** exclusion-based surgery (`<exclusions>`), auto-bumping the
+  *introducing* direct dependency, and auto-applying BOM/parent upgrades — the latter are
+  *surfaced as manual-review suggestions*, never auto-applied (see §13.4).
 
 ---
 
@@ -115,6 +132,8 @@ The same library can appear many times (multiple CVEs, repeated rows).
 - **Conflict resolution:** highest `RecommendedVersion` wins ("always the most-patched
   version"). Defensible and explainable.
 - **Transparency:** log every conflict resolved and which versions were compared.
+- Dedupe is independent of how the library resolves in the pom — it always keys on
+  `DetailedName`; the chosen version then feeds whichever apply strategy §7 selects.
 
 **Version comparison must be Maven-aware**, not string-based. Versions carry qualifiers
 (`4.2.13.Final`, `4.2.15.Final`) and naive string sorting is wrong (e.g. `4.2.4` vs
@@ -125,16 +144,32 @@ The same library can appear many times (multiple CVEs, repeated rows).
 ## 7. Pom fixing — the hard part (the moat)
 
 Anyone can bump a `<version>` tag. The real engineering value is correctly applying a
-version in a Spring Boot project, where the version may live in:
+version in a Spring Boot project, where the library may not even appear in the pom as a
+direct dependency. So the engine first **classifies how each coordinate resolves**, then
+applies the right action. Classification is deterministic: a static pom read plus
+`mvn dependency:tree` for the managed/transitive cases.
 
-- a direct `<version>` on the dependency,
-- a `<properties>` entry (e.g. `<spring-boot.version>`),
-- inherited from `spring-boot-starter-parent`,
-- managed in `<dependencyManagement>` / an imported BOM (`<scope>import</scope>`),
-- a multi-module reactor where the version sits in the parent pom.
+| Class | How it appears | v1 action |
+|-------|----------------|-----------|
+| `direct` | `<dependency>` with a literal `<version>` | edit the `<version>` in place |
+| `property` | version via a `<properties>` entry (e.g. `<netty.version>`) | edit the property value |
+| `managed` | version owned by `spring-boot-starter-parent` / an imported BOM (`<scope>import</scope>`) / a parent pom | **add or update a `<dependencyManagement>` pin** to the recommended version |
+| `transitive` | not declared in the pom at all; pulled via the resolved graph | **add a `<dependencyManagement>` pin** (Maven applies it to the whole resolved graph) |
+| `bom-coverable` | a newer managing BOM/parent would supply the fix | **suggest** the BOM/parent bump → manual review (not auto-applied) |
+| `absent / ambiguous` | cannot be classified safely | manual-review bucket |
 
-This stage is where the LLM can assist for unusual structures, and where the
-"needs manual review" bucket is produced for anything the engine can't safely change.
+**Default strategy = `<dependencyManagement>` pin.** It is the standard, surgical, low-risk
+way to force a version and works uniformly for both `managed` and `transitive` cases
+without adding a new direct dependency. Pinning is **idempotent** — re-running updates the
+existing pin rather than adding a duplicate. Dry-run by default: show the diff, apply on
+confirmation.
+
+The engine emits a **resolution log** (per finding: coordinate → class → action taken).
+Anything the engine can't safely change lands in the "needs manual review" bucket; this is
+also where the LLM can assist for unusual pom structures.
+
+**Out of v1 (see §13.4):** `<exclusions>`-based surgery, auto-bumping the *introducing*
+direct dependency, and auto-applying BOM/parent upgrades.
 
 ---
 
@@ -142,9 +177,16 @@ This stage is where the LLM can assist for unusual structures, and where the
 
 - Run `mvn clean install`.
 - **Never** treat the run as done unless the build is green.
+- **Resolution check:** after applying, run `mvn dependency:tree` (optionally
+  `-Dincludes=<groupId>:<artifactId>`) to confirm each finding's *resolved* version is now
+  the recommended one — a pin that doesn't actually take effect (e.g. overridden by a BOM)
+  must be caught here, not assumed.
+- **Honest limit:** a green build confirms the project *compiles* with the new versions; a
+  forced transitive pin can still carry runtime-compatibility risk. That is exactly why
+  BOM/parent bumps are *preferred-but-manual* (§7) and why build-gating stays mandatory.
 - If the build breaks after an upgrade, that case is surfaced (and is the natural place
   for LLM-assisted diagnosis in a later phase).
-- Idempotent: re-running must not double-apply changes.
+- Idempotent: re-running must not double-apply changes (pins are updated in place).
 
 ---
 
@@ -156,8 +198,11 @@ Because the tool edits other teams' code, it must be auditable:
 - **Skipped-rows log** — e.g. "142 rows for app X: 38 Java libraries processed,
   104 container/OS vulns skipped (not pom-fixable)."
 - **Conflict log** — which duplicate versions were seen and which won.
+- **Resolution log** — per library: resolution class (direct / property / managed /
+  transitive) and the strategy applied (in-place edit vs. `<dependencyManagement>` pin).
 - **Clear change report** — per library: from → to, CVE, why this version.
-- **Build gating** — no "success" claimed on a failed build.
+- **Build gating** — no "success" claimed on a failed build, *and* the `dependency:tree`
+  resolution check must confirm the recommended versions actually resolved (§8).
 
 ---
 
@@ -178,13 +223,14 @@ Because the tool edits other teams' code, it must be auditable:
 |-------|-------------|-------------|
 | 1 | Advisory parser + dedupe engine (filter chain, clean extraction, Maven-aware dedupe, skipped/conflict logs) | No |
 | 2 | Maven-aware version comparison module | No |
-| 3 | Pom fixer (direct / property / parent / BOM cases) + dry-run diff | Optional (hard cases) |
-| 4 | Build runner (`mvn clean install`) + green-build gating | No |
+| 3 | Pom fixer — resolution classifier + apply: direct / property / managed (`<dependencyManagement>` pin) / transitive pin, + dry-run diff + resolution log | Optional (hard cases) |
+| 4 | Build runner (`mvn clean install`) + green-build gating + `mvn dependency:tree` resolution check | No |
 | 5 | MCP server wrapper exposing core/ as tools | No (LLM uses it) |
 
 Phases 1–5 constitute **v1** (manual Excel → fix → green build). Everything beyond v1 —
 Mend integration, automated PRs, LLM-assisted build recovery, scale — is captured in
-section 13 (Phase 2 roadmap).
+section 13 (Phase 2 roadmap). Note: `mvn dependency:tree` (Phase 3 classify + Phase 4
+verify) shares the Maven toolchain the build runner already needs.
 
 **Phase 1 is the immediate next step** — standalone, testable, and independent of the
 harder pom work.
@@ -258,11 +304,15 @@ breakages an upgrade introduces.
 
 ### 13.4 Broader pom-structure coverage
 
-Goal: handle the long tail of Spring Boot project shapes the v1 fixer punts on.
+Goal: handle the long tail of Spring Boot project shapes the v1 fixer punts on, and the
+remediation strategies v1 deliberately leaves manual (§7).
 
+- **Auto BOM/parent upgrades** — when a newer `spring-boot-starter-parent` / imported BOM
+  supplies the fix, bump it (vendor-tested aligned set) rather than pinning individually.
+  v1 only *suggests* this; here it becomes an applied strategy.
+- **`<exclusions>`-based surgery** and **auto-bumping the introducing direct dependency**
+  for transitive vulns where a plain `<dependencyManagement>` pin is insufficient.
 - Deeper multi-module reactor support (version declared in a parent/aggregator pom).
-- Imported BOM alignment (bump the BOM rather than individual managed deps where that
-  is the correct fix).
 - Property-indirection chains and profiles.
 - Each added case ships with tests against real-world pom fixtures.
 
