@@ -63,18 +63,23 @@ Relay the resolution log (per finding: class → strategy) and the diff. The fix
 idempotent and never downgrades (re-running on a fixed pom is a no-op). BOM/parent
 upgrades are not auto-applied in v1.
 
-### 3. Verify the build (Phase 4 — `build_runner.py`, not built yet)
+### 3. Verify the build (Phase 4 — `build_runner.py`, available now)
 
 ```bash
-mvn clean install
-mvn dependency:tree -Dincludes=<groupId>:<artifactId>   # confirm the resolved version
+# build + resolved-version check (or the verify_build MCP tool)
+dep-remediation verify <project_dir> --from-advisory <advisory.xlsx> --app <owner>
+# or fix + verify in one step
+dep-remediation fix <pom.xml> --from-advisory <advisory.xlsx> --app <owner> --apply --verify
 ```
 
-**Never report success unless the build is green AND `dependency:tree` confirms each
-finding resolved to the recommended version** (a pin can be silently overridden). If the
-build breaks, surface the failure and the diff that caused it. Re-running must be
-idempotent — pins are updated in place, no double-applied bumps. Note the honest limit: a
-green build proves it compiles, not that a forced transitive pin is runtime-safe.
+Point `verify` at the **aggregator root** for a multi-module reactor (resolution is
+checked across all modules). **Never report success unless the build is green AND every
+finding resolved to the recommended version** (`success` already encodes this; a pin can
+be silently overridden by a BOM → surfaced as needs-manual-review). On failure, relay the
+`log_tail`, `failing_goal`, and `attempted` culprits, then propose a fix and re-run
+`apply_fixes`/`verify_build` (this is the interactive recovery loop — the automated one is
+Phase 2). Honest limit: a green build proves it compiles, not that a forced transitive pin
+is runtime-safe.
 
 ## Guardrails
 

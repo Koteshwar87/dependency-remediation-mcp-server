@@ -62,9 +62,9 @@ src/dep_remediation/
 │   ├── advisory_parser.py      # read Excel, filter, extract, dedupe -> normalized list   [Phase 1 ✅]
 │   ├── version_compare.py      # Maven-aware version comparison                            [Phase 2 ✅]
 │   ├── pom_fixer.py            # classify resolution + apply upgrades to pom.xml            [Phase 3 ✅]
-│   └── build_runner.py         # run mvn clean install, interpret result                   [Phase 4 ⬜]
-├── cli.py                      # plain CLI adapter (parse / fix subcommands)                [✅]
-└── mcp_server.py               # FastMCP server (parse_advisory + apply_fixes tools)        [Phase 5 — partial ✅]
+│   └── build_runner.py         # mvn clean install + dependency:tree resolution check       [Phase 4 ✅]
+├── cli.py                      # plain CLI adapter (parse / fix / verify subcommands)        [✅]
+└── mcp_server.py               # FastMCP server (parse_advisory + apply_fixes + verify_build) [Phase 5 — partial ✅]
 ```
 
 Entry points (from `pyproject.toml`): `dep-remediation` (CLI) and
@@ -148,6 +148,30 @@ Example dry-run diff (a parent-managed/transitive pom gets a pinned block):
 +    </dependencyManagement>
 ```
 
+### Verify the build (Phase 4)
+
+Runs `mvn clean install` and gates on a **green build**, then runs `mvn dependency:tree`
+to confirm each finding's *resolved* version is actually the recommended one (a pin can be
+silently overridden by a BOM). Point it at the **aggregator root** for a multi-module
+reactor — resolution is checked across every module.
+
+```bash
+# build-only gate
+dep-remediation verify ./my-app
+
+# build + resolved-version check against the advisory
+dep-remediation verify ./my-app --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha
+
+# fix and verify in one shot (only chains after a successful --apply)
+dep-remediation fix ./my-app/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha --apply --verify
+```
+
+Overall success requires the build green **and** every finding resolved; unresolved
+findings are surfaced for manual review. On failure the result carries the log tail, the
+failing goal, and the just-applied bumps (likely culprits) so recovery can be driven
+interactively. **Honest limit:** a green build proves the project *compiles*, not that a
+forced transitive pin is runtime-safe.
+
 ### Run the tests
 
 ```bash
@@ -160,7 +184,7 @@ pytest -q
 python -m dep_remediation.core.version_compare   # runs the built-in self-tests
 ```
 
-### Run as an MCP server (Phase 5 — `parse_advisory` + `apply_fixes` tools)
+### Run as an MCP server (Phase 5 — `parse_advisory` + `apply_fixes` + `verify_build`)
 
 The server speaks MCP over **stdio**, so an MCP client (VS Code / IntelliJ AI assistant,
 Claude Desktop, etc.) launches it. Run directly:
@@ -186,9 +210,10 @@ Tools exposed today:
 - `parse_advisory(xlsx_path, app, base_image_filter=True)` — the deduped fix list.
 - `apply_fixes(pom_path, xlsx_path, app, apply=False)` — classify + apply upgrades to a
   pom; dry-run by default, returns the resolution log, manual-review bucket, and diff.
+- `verify_build(project_dir, xlsx_path="", app="")` — `mvn clean install` + (optional)
+  resolved-version check; returns the build result with actionable failure context.
 
-`verify_build` (Phase 4) follows. (stdio transport reserves stdout for JSON-RPC; the
-server logs to stderr.)
+(stdio transport reserves stdout for JSON-RPC; the server logs to stderr.)
 
 ---
 

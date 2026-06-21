@@ -9,7 +9,7 @@ stdout. Use `logging` (configured to stderr) for diagnostics.
 Entry point: `dep-remediation-mcp` (see pyproject [project.scripts]) or
 `python -m dep_remediation.mcp_server`.
 
-v1 exposes Phase-1 parsing and Phase-3 pom fixing; `verify_build` (Phase 4) follows.
+v1 exposes Phase-1 parsing, Phase-3 pom fixing, and Phase-4 build verification.
 """
 from __future__ import annotations
 import logging
@@ -18,6 +18,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .core.advisory_parser import parse
 from .core.pom_fixer import apply_fixes as _apply_fixes
+from .core import build_runner
 
 logging.basicConfig(level=logging.INFO)  # logging defaults to stderr (stdout = JSON-RPC)
 
@@ -61,6 +62,31 @@ def apply_fixes(pom_path: str, xlsx_path: str, app: str, apply: bool = False) ->
     """
     rep = parse(xlsx_path, app)
     return _apply_fixes(pom_path, rep.findings, dry_run=not apply).to_dict()
+
+
+@mcp.tool()
+def verify_build(project_dir: str, xlsx_path: str = "", app: str = "") -> dict:
+    """Build a Maven project and confirm the advisory fixes actually resolved.
+
+    Runs `mvn clean install` (point `project_dir` at the aggregator root for a reactor) and
+    gates on a green build. When `xlsx_path` and `app` are given, also runs
+    `mvn dependency:tree` and checks every advisory finding resolved to its recommended
+    version across all modules — `success` is True only if the build is green AND all
+    findings resolved.
+
+    On failure the result carries actionable context (`log_tail`, `failing_goal`,
+    `attempted`) so recovery can be driven interactively. A green build proves the project
+    compiles; it does not guarantee a forced transitive pin is runtime-safe.
+
+    Args:
+        project_dir: Path to the Maven project (aggregator root for a multi-module build).
+        xlsx_path: Optional advisory .xlsx to enable the resolved-version check.
+        app: Optional owner/app name to filter the advisory by (used with xlsx_path).
+    """
+    findings = ()
+    if xlsx_path and app:
+        findings = parse(xlsx_path, app).findings
+    return build_runner.verify(project_dir, findings).to_dict()
 
 
 def main():

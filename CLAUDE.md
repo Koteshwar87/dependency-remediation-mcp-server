@@ -55,9 +55,9 @@ Standard `src/` package (`src/dep_remediation/`). `core/` is the deterministic e
 | `core/advisory_parser.py` | 1 ✅ | Read Excel, apply filter chain, extract fields, dedupe → `Report` |
 | `core/version_compare.py` | 2 ✅ | Maven-aware `compare()` / `version_key` / `max_version()` |
 | `core/pom_fixer.py` | 3 ✅ | Classify resolution (direct/property/managed/transitive) + apply upgrades to `pom.xml` (`plan_fixes`/`apply_fixes` → `FixResult`) |
-| `core/build_runner.py` | 4 ⬜ | Run `mvn clean install` + `dependency:tree`, interpret result, gate on green |
-| `cli.py` | ✅ | `dep-remediation` entry point — `parse` / `fix` subcommands over `core/` |
-| `mcp_server.py` | 5 (partial ✅) | `dep-remediation-mcp` FastMCP server; `parse_advisory` + `apply_fixes` tools live |
+| `core/build_runner.py` | 4 ✅ | `mvn clean install` + `dependency:tree` resolution check (reactor-aware), green-build gating (`verify` → `BuildResult`) |
+| `cli.py` | ✅ | `dep-remediation` entry point — `parse` / `fix` / `verify` subcommands over `core/` |
+| `mcp_server.py` | 5 (partial ✅) | `dep-remediation-mcp` FastMCP server; `parse_advisory` + `apply_fixes` + `verify_build` tools live |
 
 `core/advisory_parser.py` imports `core/version_compare.py` via a **relative** import
 (`from .version_compare import version_key`). Core modules are import-only (no argparse
@@ -85,8 +85,11 @@ uv sync                       # or: pip install -e ".[dev]"
 # Parse an advisory for an app  (or: python -m dep_remediation.cli ...)
 dep-remediation parse tests/fixtures/dummy_advisory.xlsx --app app-alpha [--json] [--no-base-image-filter]
 
-# Fix a pom (dry-run by default; --apply writes)
-dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha [--apply]
+# Fix a pom (dry-run by default; --apply writes; --verify builds after applying)
+dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha [--apply] [--verify]
+
+# Verify a build (mvn clean install + dependency:tree resolution check; aggregator root for a reactor)
+dep-remediation verify path/to/project [--from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha]
 
 # Tests + version-comparison self-tests
 pytest -q
@@ -109,3 +112,6 @@ dep-remediation-mcp
 - When adding a new pom-structure case or version edge case, add a fixture/test for it.
 - Don't introduce a network call into `core/`. Sources (Excel today, Mend later) belong
   behind a pluggable source interface (Phase 2.1).
+- `core/build_runner.py` is the one core module that shells out (Maven). Keep its pure
+  parsers (`interpret_build`, `parse_resolved_versions`, `build_resolutions`) Maven-free
+  and unit-tested; the subprocess runner is injectable so tests never need a live `mvn`.
