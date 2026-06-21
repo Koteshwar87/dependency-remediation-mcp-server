@@ -1,0 +1,9 @@
+# Core engine dependencies (Phase 1+)
+pandas>=2.0          # advisory Excel reading / row filtering
+openpyxl>=3.1        # .xlsx engine used by pandas.read_excel
+
+# Dev / test
+pytest>=8.0
+
+# MCP server adapter (Phase 5) — uncomment when building the MCP wrapper
+# mcp>=1.0
