@@ -74,8 +74,9 @@ Entry points (from `pyproject.toml`): `dep-remediation` (CLI) and
 
 ## Getting started
 
-`pyproject.toml` is the single source of truth for dependencies — works with either
-[uv](https://docs.astral.sh/uv/) (recommended) or plain pip.
+Requires **Python 3.11+** (and a Maven install — `mvn` on PATH or a project `mvnw`
+wrapper — for the `verify` step). `pyproject.toml` is the single source of truth for
+dependencies — works with either [uv](https://docs.astral.sh/uv/) (recommended) or plain pip.
 
 ```bash
 # uv
@@ -107,12 +108,14 @@ App: app-alpha
   Skipped (other owner):   1
   Skipped (container/OS):  2
   Skipped (base image):    1
+  Skipped (missing data):  0
 
 Unique libraries to fix: 4
-  com.fasterxml.jackson.core:jackson-databind   2.13.0        -> 2.15.4
-  io.netty:netty-codec-dns                      4.2.4.Final   -> 4.2.13.Final
-  io.netty:netty-handler                        4.2.4.Final   -> 4.2.15.Final
-  org.springframework:spring-core               5.3.32        -> 6.2.11
+  LIBRARY                                          CURRENT        -> RECOMMENDED
+  com.fasterxml.jackson.core:jackson-databind      2.13.0         -> 2.15.4
+  io.netty:netty-codec-dns                         4.2.4.Final    -> 4.2.13.Final
+  io.netty:netty-handler                           4.2.4.Final    -> 4.2.15.Final
+  org.springframework:spring-core                  5.3.32         -> 6.2.11
 
 Conflicts resolved (highest version wins): 1
   io.netty:netty-handler: chose 4.2.15.Final  from ['4.2.13.Final', '4.2.15.Final']
@@ -126,14 +129,24 @@ BOM-managed/transitive libraries. **Dry-run by default** (prints the diff); pass
 `--apply` to write. Idempotent and never downgrades.
 
 ```bash
-# Dry-run: show what would change
+# Dry-run: show the resolution log + diff (add --json for machine-readable output)
 dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha
 
 # Apply the changes
 dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha --apply
 ```
 
-Example dry-run diff (a parent-managed/transitive pom gets a pinned block):
+Each finding is reported with its resolution class and the strategy applied:
+
+```
+Actions: 4
+  [transitive/add-pin]   com.fasterxml.jackson.core:jackson-databind: (managed/transitive) -> 2.15.4  (added <dependencyManagement> pin)
+  [transitive/add-pin]   io.netty:netty-codec-dns: (managed/transitive) -> 4.2.13.Final  (added <dependencyManagement> pin)
+  [direct/edit-version]  io.netty:netty-handler: 4.2.4.Final -> 4.2.15.Final
+  [transitive/add-pin]   org.springframework:spring-core: (managed/transitive) -> 6.2.11  (added <dependencyManagement> pin)
+```
+
+followed by a unified diff — e.g. a parent-managed/transitive pom gets a pinned block:
 
 ```diff
 +    <dependencyManagement>
@@ -243,7 +256,14 @@ Because the tool edits other teams' code it is auditable by design:
 - **Dry-run by default** — show the diff, apply on confirmation.
 - **Skipped-rows log** — how many rows dropped and why.
 - **Conflict log** — which duplicate versions were seen and which won.
-- **Build gating** — success is never claimed on a broken build.
+- **Resolution log** — per finding: how it resolves (direct / property / managed /
+  transitive) and the strategy applied (in-place edit vs. `<dependencyManagement>` pin),
+  plus a manual-review bucket for anything not safely fixable.
+- **Idempotent, no-downgrade** edits — re-running a fix is a no-op; an existing higher
+  version is never lowered.
+- **Build gating + resolved-version check** — success is never claimed on a broken build,
+  and `mvn dependency:tree` must confirm each finding actually resolved to the recommended
+  version (a pin silently overridden by a BOM is flagged, not hidden).
 
 ## Roadmap (Phase 2)
 
