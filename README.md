@@ -61,10 +61,10 @@ src/dep_remediation/
 ├── core/                       # LLM-agnostic engine (the real product)
 │   ├── advisory_parser.py      # read Excel, filter, extract, dedupe -> normalized list   [Phase 1 ✅]
 │   ├── version_compare.py      # Maven-aware version comparison                            [Phase 2 ✅]
-│   ├── pom_fixer.py            # apply version upgrades to pom.xml                          [Phase 3 ⬜]
+│   ├── pom_fixer.py            # classify resolution + apply upgrades to pom.xml            [Phase 3 ✅]
 │   └── build_runner.py         # run mvn clean install, interpret result                   [Phase 4 ⬜]
-├── cli.py                      # plain CLI adapter — works with no LLM                      [✅]
-└── mcp_server.py               # FastMCP server exposing core/ as MCP tools                 [Phase 5 — parse tool ✅]
+├── cli.py                      # plain CLI adapter (parse / fix subcommands)                [✅]
+└── mcp_server.py               # FastMCP server (parse_advisory + apply_fixes tools)        [Phase 5 — partial ✅]
 ```
 
 Entry points (from `pyproject.toml`): `dep-remediation` (CLI) and
@@ -91,10 +91,10 @@ pip install -e ".[dev]"
 
 ```bash
 # Human-readable summary  (console script, or: python -m dep_remediation.cli ...)
-dep-remediation tests/fixtures/dummy_advisory.xlsx --app app-alpha
+dep-remediation parse tests/fixtures/dummy_advisory.xlsx --app app-alpha
 
 # Machine-readable output
-dep-remediation tests/fixtures/dummy_advisory.xlsx --app app-alpha --json
+dep-remediation parse tests/fixtures/dummy_advisory.xlsx --app app-alpha --json
 ```
 
 Example output:
@@ -118,13 +118,49 @@ Conflicts resolved (highest version wins): 1
   io.netty:netty-handler: chose 4.2.15.Final  from ['4.2.13.Final', '4.2.15.Final']
 ```
 
+### Fix a pom (Phase 3)
+
+Classifies how each flagged library resolves in the pom and applies the upgrade —
+editing a direct `<version>`/property, or adding a `<dependencyManagement>` pin for
+BOM-managed/transitive libraries. **Dry-run by default** (prints the diff); pass
+`--apply` to write. Idempotent and never downgrades.
+
+```bash
+# Dry-run: show what would change
+dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha
+
+# Apply the changes
+dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha --apply
+```
+
+Example dry-run diff (a parent-managed/transitive pom gets a pinned block):
+
+```diff
++    <dependencyManagement>
++        <dependencies>
++            <!-- security pin -->
++            <dependency>
++                <groupId>io.netty</groupId>
++                <artifactId>netty-handler</artifactId>
++                <version>4.2.15.Final</version>
++            </dependency>
++        </dependencies>
++    </dependencyManagement>
+```
+
+### Run the tests
+
+```bash
+pytest -q
+```
+
 ### Verify version comparison (Phase 2)
 
 ```bash
 python -m dep_remediation.core.version_compare   # runs the built-in self-tests
 ```
 
-### Run as an MCP server (Phase 5 — `parse_advisory` tool)
+### Run as an MCP server (Phase 5 — `parse_advisory` + `apply_fixes` tools)
 
 The server speaks MCP over **stdio**, so an MCP client (VS Code / IntelliJ AI assistant,
 Claude Desktop, etc.) launches it. Run directly:
@@ -146,9 +182,13 @@ Example client config (`mcpServers` entry):
 }
 ```
 
-It exposes one tool today — `parse_advisory(xlsx_path, app, base_image_filter=True)` —
-returning the deduped fix list; `apply_fixes` (Phase 3) and `verify_build` (Phase 4)
-follow. (stdio transport reserves stdout for JSON-RPC; the server logs to stderr.)
+Tools exposed today:
+- `parse_advisory(xlsx_path, app, base_image_filter=True)` — the deduped fix list.
+- `apply_fixes(pom_path, xlsx_path, app, apply=False)` — classify + apply upgrades to a
+  pom; dry-run by default, returns the resolution log, manual-review bucket, and diff.
+
+`verify_build` (Phase 4) follows. (stdio transport reserves stdout for JSON-RPC; the
+server logs to stderr.)
 
 ---
 

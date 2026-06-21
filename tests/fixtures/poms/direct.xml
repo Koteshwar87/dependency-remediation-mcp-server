@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>direct-app</artifactId>
+    <version>1.0.0</version>
+    <dependencies>
+        <!-- direct dependency with a literal version -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-handler</artifactId>
+            <version>4.2.4.Final</version>
+        </dependency>
+    </dependencies>
+</project>

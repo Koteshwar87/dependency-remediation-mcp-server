@@ -15,11 +15,15 @@ keywords = ["mcp", "security", "dependencies", "maven", "spring-boot", "remediat
 dependencies = [
     "pandas>=2.2",        # advisory Excel reading / row filtering
     "openpyxl>=3.1.5",    # .xlsx engine used by pandas.read_excel
+    "lxml>=5.0",          # pom.xml surgery preserving comments/formatting (round-trips untouched nodes)
     "mcp[cli]>=1.2",      # MCP Python SDK (FastMCP); [cli] pulls the `mcp` command-line tool
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [project.scripts]
 dep-remediation = "dep_remediation.cli:main"

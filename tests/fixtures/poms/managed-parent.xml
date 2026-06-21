@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.0</version>
+    </parent>
+    <groupId>com.example</groupId>
+    <artifactId>managed-app</artifactId>
+    <version>1.0.0</version>
+    <dependencies>
+        <!-- version inherited from the Spring Boot parent (no <version> here) -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-handler</artifactId>
+        </dependency>
+    </dependencies>
+</project>
