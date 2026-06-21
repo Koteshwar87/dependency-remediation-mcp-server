@@ -8,15 +8,12 @@ Designed to be deterministic and LLM-free. Emits a normalized advisory list plus
 transparency logs (skipped rows, resolved conflicts).
 """
 from __future__ import annotations
-import argparse
-import json
 import re
 from dataclasses import dataclass, asdict, field
-from pathlib import Path
 
 import pandas as pd
 
-from version_compare import version_key
+from .version_compare import version_key
 
 # Column names as seen in the real sheet. Centralized so a rename is a one-line fix.
 COL_OWNER = "owner"
@@ -150,23 +147,3 @@ def print_report(rep: Report):
         print(f"Conflicts resolved (highest version wins): {len(rep.conflicts)}")
         for c in rep.conflicts:
             print(f"  {c.coordinate}: chose {c.chosen}  from {c.candidates}")
-
-
-def main():
-    ap = argparse.ArgumentParser(description="Parse security advisory Excel -> normalized fix list")
-    ap.add_argument("xlsx", help="path to advisory .xlsx")
-    ap.add_argument("--app", required=True, help="owner/app name to filter by")
-    ap.add_argument("--json", action="store_true", help="emit JSON instead of text")
-    ap.add_argument("--no-base-image-filter", action="store_true",
-                    help="do not skip rows where Base image vulnerability = TRUE")
-    args = ap.parse_args()
-
-    rep = parse(args.xlsx, args.app, base_image_filter=not args.no_base_image_filter)
-    if args.json:
-        print(json.dumps(rep.to_dict(), indent=2))
-    else:
-        print_report(rep)
-
-
-if __name__ == "__main__":
-    main()

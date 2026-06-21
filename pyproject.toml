@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dependency-remediation-mcp-server"
+version = "0.1.0"
+description = "LLM-agnostic tool to remediate vulnerable Java dependencies in Spring Boot Maven apps from a security advisory, shipped as an MCP server over a deterministic engine."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Koteshwar" }]
+keywords = ["mcp", "security", "dependencies", "maven", "spring-boot", "remediation"]
+
+dependencies = [
+    "pandas>=2.2",        # advisory Excel reading / row filtering
+    "openpyxl>=3.1.5",    # .xlsx engine used by pandas.read_excel
+    "mcp[cli]>=1.2",      # MCP Python SDK (FastMCP); [cli] pulls the `mcp` command-line tool
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3"]
+
+[project.scripts]
+dep-remediation = "dep_remediation.cli:main"
+dep-remediation-mcp = "dep_remediation.mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dep_remediation"]

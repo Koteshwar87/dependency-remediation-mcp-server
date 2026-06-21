@@ -10,7 +10,7 @@ Java library findings, applies the recommended version upgrades to `pom.xml`, an
 confirms `mvn clean install` still passes.
 
 The full, authoritative design lives in
-[`dependency-remediation-tool-plan_1.md`](dependency-remediation-tool-plan_1.md).
+[`docs/dependency-remediation-tool-plan_1.md`](docs/dependency-remediation-tool-plan_1.md).
 **Read it before making non-trivial changes** — it defines scope, non-goals, the data
 model, the dedupe rule, and the Phase 2 roadmap. If a change conflicts with the plan,
 flag it rather than silently diverging.
@@ -38,27 +38,30 @@ Out of scope (do not implement without being asked): Mend/portal APIs, container
 package fixes, Gradle, transitive resolution, automated PRs. These are Phase 2 — see
 section 13 of the plan.
 
-## Current layout
+## Layout
 
-The code is currently flat at the repo root; it will migrate under `core/` as the
-engine grows (target layout is in the plan and README).
+Standard `src/` package (`src/dep_remediation/`). `core/` is the deterministic engine;
+`cli.py` and `mcp_server.py` are thin adapters. Console entry points are defined in
+`pyproject.toml`.
 
-| File | Phase | Purpose |
-|------|-------|---------|
-| `advisory_parser.py` | 1 ✅ | Read Excel, apply filter chain, extract fields, dedupe → `Report` |
-| `version_compare.py` | 2 ✅ | Maven-aware `compare()` / `max_version()` |
-| `pom_fixer.py` | 3 ⬜ | Apply version upgrades to `pom.xml` (direct / property / parent / BOM) |
-| `build_runner.py` | 4 ⬜ | Run `mvn clean install`, interpret result, gate on green |
-| `adapters/cli`, `adapters/mcp-server` | 5 ⬜ | Thin wrappers over `core/` |
+| Module | Phase | Purpose |
+|--------|-------|---------|
+| `core/advisory_parser.py` | 1 ✅ | Read Excel, apply filter chain, extract fields, dedupe → `Report` |
+| `core/version_compare.py` | 2 ✅ | Maven-aware `compare()` / `version_key` / `max_version()` |
+| `core/pom_fixer.py` | 3 ⬜ | Apply version upgrades to `pom.xml` (direct / property / parent / BOM) |
+| `core/build_runner.py` | 4 ⬜ | Run `mvn clean install`, interpret result, gate on green |
+| `cli.py` | ✅ | `dep-remediation` entry point — argparse over `core/` |
+| `mcp_server.py` | 5 (partial ✅) | `dep-remediation-mcp` FastMCP server; `parse_advisory` tool live |
 
-`advisory_parser.py` imports from `version_compare.py`. Keep them importable as a pair
-(if you move one under `core/`, update the import and any adapter).
+`core/advisory_parser.py` imports `core/version_compare.py` via a **relative** import
+(`from .version_compare import version_key`). Core modules are import-only (no argparse
+`main`); run via the entry points or `python -m dep_remediation.cli`.
 
 ## Data model
 
 The advisory is a single-tab workbook. The engine reads clean columns only — no prose
 parsing for the fix. Column names are centralized as `COL_*` constants in
-`advisory_parser.py`; a sheet rename should be a one-line change there.
+`core/advisory_parser.py`; a sheet rename should be a one-line change there.
 
 - Filter chain: `owner` == app, `Code Library Language` == `Java`,
   `Base image vulnerability` == `FALSE`.
@@ -71,22 +74,28 @@ parsing for the fix. Column names are centralized as `COL_*` constants in
 ## Commands
 
 ```bash
-pip install -r requirements.txt
+uv sync                       # or: pip install -e ".[dev]"
 
-# Parse an advisory for an app
-python advisory_parser.py dummy_advisory.xlsx --app app-alpha [--json] [--no-base-image-filter]
+# Parse an advisory for an app  (or: python -m dep_remediation.cli ...)
+dep-remediation tests/fixtures/dummy_advisory.xlsx --app app-alpha [--json] [--no-base-image-filter]
 
 # Version-comparison self-tests
-python version_compare.py
+python -m dep_remediation.core.version_compare
+
+# Run the MCP server (stdio; normally launched by an MCP client)
+dep-remediation-mcp
 ```
 
-`dummy_advisory.xlsx` is the local sample fixture (app `app-alpha`).
+`tests/fixtures/dummy_advisory.xlsx` is the local sample fixture (app `app-alpha`).
 
 ## Conventions
 
-- Python 3.11+; standard library + `pandas`/`openpyxl` for the engine.
+- Python 3.11+; `src/` layout, `pyproject.toml` is the dependency source of truth.
+  Engine deps: `pandas`/`openpyxl`; MCP adapter: `mcp[cli]` (FastMCP).
 - Keep modules deterministic and unit-testable; prefer pure functions returning
   dataclasses (`Finding`, `Conflict`, `Report`) over side effects.
+- **MCP/stdio: never `print()` to stdout** — stdout carries JSON-RPC. Log to stderr
+  (Python `logging`). This applies to `mcp_server.py` and anything it imports at runtime.
 - When adding a new pom-structure case or version edge case, add a fixture/test for it.
 - Don't introduce a network call into `core/`. Sources (Excel today, Mend later) belong
   behind a pluggable source interface (Phase 2.1).

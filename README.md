@@ -11,7 +11,7 @@ deterministic Python engine, so it imports into VS Code and IntelliJ AI assistan
 works with the developer's model of choice. A plain CLI over the same engine is provided
 as a zero-LLM fallback.
 
-> Full design and roadmap: [`dependency-remediation-tool-plan_1.md`](dependency-remediation-tool-plan_1.md)
+> Full design and roadmap: [`docs/dependency-remediation-tool-plan_1.md`](docs/dependency-remediation-tool-plan_1.md)
 
 ---
 
@@ -44,40 +44,48 @@ advisory.xlsx ──► filter (owner + Java + not base-image)
 
 ### Architecture
 
-```
-core/                      # LLM-agnostic Python engine (the real product)
-├── advisory_parser.py     # read Excel, filter, extract, dedupe -> normalized list   [Phase 1 ✅]
-├── version_compare.py     # Maven-aware version comparison                            [Phase 2 ✅]
-├── pom_fixer.py           # apply version upgrades to pom.xml                          [Phase 3 ⬜]
-└── build_runner.py        # run mvn clean install, interpret result                   [Phase 4 ⬜]
+Standard `src/` package layout. The deterministic engine (`core/`) is the product;
+the CLI and MCP server are thin adapters over it.
 
-adapters/
-├── cli/                   # plain CLI — works with no LLM                             [⬜]
-└── mcp-server/            # exposes core/ as MCP tools                                [Phase 5 ⬜]
+```
+src/dep_remediation/
+├── core/                       # LLM-agnostic engine (the real product)
+│   ├── advisory_parser.py      # read Excel, filter, extract, dedupe -> normalized list   [Phase 1 ✅]
+│   ├── version_compare.py      # Maven-aware version comparison                            [Phase 2 ✅]
+│   ├── pom_fixer.py            # apply version upgrades to pom.xml                          [Phase 3 ⬜]
+│   └── build_runner.py         # run mvn clean install, interpret result                   [Phase 4 ⬜]
+├── cli.py                      # plain CLI adapter — works with no LLM                      [✅]
+└── mcp_server.py               # FastMCP server exposing core/ as MCP tools                 [Phase 5 — parse tool ✅]
 ```
 
-> Current code lives at the repo root (`advisory_parser.py`, `version_compare.py`) and
-> will be moved under `core/` as the engine grows. See [CLAUDE.md](CLAUDE.md).
+Entry points (from `pyproject.toml`): `dep-remediation` (CLI) and
+`dep-remediation-mcp` (MCP stdio server). See [CLAUDE.md](CLAUDE.md).
 
 ---
 
 ## Getting started
 
+`pyproject.toml` is the single source of truth for dependencies — works with either
+[uv](https://docs.astral.sh/uv/) (recommended) or plain pip.
+
 ```bash
+# uv
+uv sync
+
+# or pip
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS / Linux
-pip install -r requirements.txt
+.venv\Scripts\activate          # Windows  (source .venv/bin/activate on macOS/Linux)
+pip install -e ".[dev]"
 ```
 
 ### Parse an advisory (Phase 1)
 
 ```bash
-# Human-readable summary
-python advisory_parser.py dummy_advisory.xlsx --app app-alpha
+# Human-readable summary  (console script, or: python -m dep_remediation.cli ...)
+dep-remediation tests/fixtures/dummy_advisory.xlsx --app app-alpha
 
 # Machine-readable output
-python advisory_parser.py dummy_advisory.xlsx --app app-alpha --json
+dep-remediation tests/fixtures/dummy_advisory.xlsx --app app-alpha --json
 ```
 
 Example output:
@@ -104,8 +112,34 @@ Conflicts resolved (highest version wins): 1
 ### Verify version comparison (Phase 2)
 
 ```bash
-python version_compare.py   # runs the built-in self-tests
+python -m dep_remediation.core.version_compare   # runs the built-in self-tests
 ```
+
+### Run as an MCP server (Phase 5 — `parse_advisory` tool)
+
+The server speaks MCP over **stdio**, so an MCP client (VS Code / IntelliJ AI assistant,
+Claude Desktop, etc.) launches it. Run directly:
+
+```bash
+dep-remediation-mcp           # or: uv run dep-remediation-mcp
+```
+
+Example client config (`mcpServers` entry):
+
+```json
+{
+  "mcpServers": {
+    "dep-remediation": {
+      "command": "uv",
+      "args": ["--directory", "/ABSOLUTE/PATH/TO/dependency-remediation-mcp-server", "run", "dep-remediation-mcp"]
+    }
+  }
+}
+```
+
+It exposes one tool today — `parse_advisory(xlsx_path, app, base_image_filter=True)` —
+returning the deduped fix list; `apply_fixes` (Phase 3) and `verify_build` (Phase 4)
+follow. (stdio transport reserves stdout for JSON-RPC; the server logs to stderr.)
 
 ---
 

@@ -12,7 +12,7 @@ you haven't this session.
 
 ## Inputs to gather
 
-- **Advisory Excel** path (e.g. `dummy_advisory.xlsx`).
+- **Advisory Excel** path (e.g. `tests/fixtures/dummy_advisory.xlsx`).
 - **App / owner name** as it appears in the `owner` column (case-insensitive match).
 - For the fix step: path to the target Spring Boot project's `pom.xml`.
 
@@ -23,8 +23,12 @@ If the app name or Excel path is missing and not obvious, ask before running.
 ### 1. Parse + dedupe (Phase 1 — available now)
 
 ```bash
-python advisory_parser.py <advisory.xlsx> --app <owner> --json
+# console script (or: python -m dep_remediation.cli ...)
+dep-remediation <advisory.xlsx> --app <owner> --json
 ```
+
+The same logic is exposed over MCP as the `parse_advisory` tool by
+`dep-remediation-mcp` — prefer that tool when driving the workflow from an MCP client.
 
 Report back from the output:
 - counts (total rows, rows for app, Java rows, skipped owner/lang/base-image/missing),
@@ -33,7 +37,7 @@ Report back from the output:
   highest `RecommendedVersion`, Maven-aware).
 
 Do not hand-edit the dedupe result; if a chosen version looks wrong, check it with
-`version_compare.compare` rather than overriding by eye.
+`dep_remediation.core.version_compare.compare` rather than overriding by eye.
 
 ### 2. Apply to pom.xml (Phase 3 — `pom_fixer.py`, not built yet)
 
