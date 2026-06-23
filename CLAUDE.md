@@ -72,11 +72,15 @@ recovery attempt re-applies to a clean copy. A green build with any finding unre
 (`from .version_compare import version_key`). Core modules are import-only (no argparse
 `main`); run via the entry points or `python -m dep_remediation.cli`.
 
-`examples/spring-boot-sample/` is a real, intentionally-**vulnerable** single-module Spring
-Boot app (one seeded finding per resolution class) used as the end-to-end test bed. Its
-`pom.xml` is committed in the "before" state — run apply/verify against a copy. The happy
-path (parse → fix → green build + resolved-version check on live Maven) is captured in
-`examples/spring-boot-sample/SHAKEOUT.md`. Regenerate its advisory with `make_advisory.py`.
+`examples/spring-boot-sample/` is a real, intentionally-**vulnerable multi-module (reactor)**
+Spring Boot app (aggregator + `sample-core` + `sample-web`; one seeded finding per resolution
+class, spread across modules) used as the end-to-end test bed. Poms are committed in the
+"before" state — run apply/verify against a copy. The happy path and the build-failure
+recovery loop are captured on live Maven in `examples/spring-boot-sample/SHAKEOUT.md` and
+`RECOVERY.md`. Regenerate its advisories with `make_advisory.py`. **Reactor fix-targeting is
+manual today** — route each finding to the right pom (direct/property → the module that
+declares it; managed/transitive → the aggregator, inherited by all modules), using `--skip`
+to send the right subset to each pom. Auto fix-targeting is plan §13.4.
 
 ## Data model
 

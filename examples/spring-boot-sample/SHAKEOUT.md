@@ -1,82 +1,71 @@
-# End-to-end shakeout — captured run
+# End-to-end shakeout — captured run (multi-module reactor)
 
-First real run of the full pipeline (parse → fix → green build + resolved-version check)
-against a **real Spring Boot Maven project and live Maven** (Apache Maven 3.8.1, Java 17),
-not fixtures. This is the evidence the happy path works end to end.
+Full pipeline (parse → targeted fix → green build + cross-module resolution check) against
+the **multi-module reactor** sample on **live Maven** (Apache Maven 3.8.1, Java 17). This is
+the evidence the reactor-aware path works end to end, not just on fixtures.
 
-The committed sample stays in its **"before" (vulnerable)** state; the apply + verify steps
-were run against a throwaway copy.
+The committed sample stays in its **"before" (vulnerable)** state; the fix + verify steps
+run against a throwaway copy.
 
-## 1. Parse the advisory
+## Module layout and where each finding lives
 
 ```
-$ dep-remediation parse examples/spring-boot-sample/advisory.xlsx --app sample-app
+spring-boot-sample/        aggregator (packaging pom) — managed/transitive pins go here
+├── sample-core/           commons-text 1.9 (DIRECT) + commons-collections4 4.1 (PROPERTY)
+└── sample-web/            snakeyaml (MANAGED) + tomcat-embed-core 10.1.24 (TRANSITIVE via starter-web)
+```
 
-App: sample-app
-  Rows in sheet:           7
-  Rows for this app:       6
-  Java library rows:       5
-  Skipped (other owner):   1
-  Skipped (container/OS):  1
-  Skipped (base image):    1
-  Skipped (missing data):  0
+`commons-text` / `commons-collections4` / `snakeyaml` resolve in **both** modules
+(`sample-web` depends on `sample-core`), so the resolution check below spans the whole reactor.
 
+## 1. Parse — unchanged (4 findings)
+
+```
+$ dep-remediation parse advisory.xlsx --app sample-app
 Unique libraries to fix: 4
-  LIBRARY                                          CURRENT        -> RECOMMENDED
-  org.apache.commons:commons-collections4          4.1            -> 4.4
-  org.apache.commons:commons-text                  1.9            -> 1.10.0
-  org.apache.tomcat.embed:tomcat-embed-core        10.1.24        -> 10.1.25
-  org.yaml:snakeyaml                               2.2            -> 2.3
+  org.apache.commons:commons-collections4   4.1      -> 4.4
+  org.apache.commons:commons-text           1.9      -> 1.10.0
+  org.apache.tomcat.embed:tomcat-embed-core 10.1.24  -> 10.1.25
+  org.yaml:snakeyaml                        2.2      -> 2.3
 ```
 
-The three noise rows (other owner / blank-language container row / base-image=TRUE) are
-each filtered out for the right reason.
+## 2. Targeted fix — route each finding to the right pom
 
-## 2. Fix (dry-run) — one action per resolution class
+A `<dependencyManagement>` pin only affects its own module subtree and **cannot override a
+module's explicit `<version>`**, so the fix is routed (the `--skip` flag does the routing):
 
 ```
-$ dep-remediation fix examples/spring-boot-sample/pom.xml \
-      --from-advisory examples/spring-boot-sample/advisory.xlsx --app sample-app
-
-Actions: 4
+# direct + property live in sample-core -> edit there (skip the managed/transitive ones)
+$ dep-remediation fix sample-core/pom.xml --from-advisory advisory.xlsx --app sample-app \
+      --skip org.yaml:snakeyaml --skip org.apache.tomcat.embed:tomcat-embed-core --apply
+Actions: 2
   [property/edit-property] org.apache.commons:commons-collections4: 4.1 -> 4.4
   [direct/edit-version]    org.apache.commons:commons-text: 1.9 -> 1.10.0
-  [transitive/add-pin]     org.apache.tomcat.embed:tomcat-embed-core: (managed/transitive) -> 10.1.25  (added <dependencyManagement> pin)
-  [managed/add-pin]        org.yaml:snakeyaml: (managed/transitive) -> 2.3  (added <dependencyManagement> pin)
-Applied: False
+
+# managed + transitive -> pin in the AGGREGATOR (inherited by every module)
+$ dep-remediation fix pom.xml --from-advisory advisory.xlsx --app sample-app \
+      --skip org.apache.commons:commons-text --skip org.apache.commons:commons-collections4 --apply
+Actions: 2
+  [transitive/add-pin] org.apache.tomcat.embed:tomcat-embed-core: ... -> 10.1.25
+  [transitive/add-pin] org.yaml:snakeyaml: ... -> 2.3
 ```
 
-All four resolution classes the classifier supports are exercised:
-**direct** literal `<version>`, **property**-sourced version, **managed** (versionless,
-owned by the Boot parent BOM), and purely **transitive** — the last two remediated with a
-`<dependencyManagement>` pin.
+> This manual routing is exactly the gap **auto fix-targeting** (plan §13.4) will close —
+> the engine deciding which parent/module pom each finding belongs in.
 
-## 3. Apply + verify against live Maven
+## 3. Verify at the aggregator root — reactor-wide
 
 ```
-$ dep-remediation verify <copy> --from-advisory examples/spring-boot-sample/advisory.xlsx --app sample-app
-
+$ dep-remediation verify . --from-advisory advisory.xlsx --app sample-app
   Build: GREEN (exit 0)
   Resolved versions:
-    org.apache.commons:commons-collections4  expected 4.4      OK
-    org.apache.commons:commons-text          expected 1.10.0   OK
+    org.apache.commons:commons-collections4   expected 4.4      OK
+    org.apache.commons:commons-text           expected 1.10.0   OK
     org.apache.tomcat.embed:tomcat-embed-core expected 10.1.25  OK
-    org.yaml:snakeyaml                       expected 2.3      OK
+    org.yaml:snakeyaml                        expected 2.3      OK
   Overall: SUCCESS
 ```
 
-`mvn clean install` is green **and** `mvn dependency:tree` confirms every finding resolved
-to the recommended version (including the two enforced via a pin).
-
-## Observations (feed into the next iteration)
-
-- **Wrapper invocation is fragile.** `core/build_runner.py` prefers a project `mvnw`/
-  `mvnw.cmd`. On this Windows run the wrapper's first-time self-provisioning failed in the
-  temp working dir (`fail to move MAVEN_HOME` / `Cannot start maven from wrapper`). System
-  `mvn` worked fine, so verification was completed via the existing `shutil.which("mvn")`
-  fallback. **Follow-up:** when the wrapper fails to *launch* (vs. a genuine build failure),
-  `build_runner` should fall back to system `mvn` rather than reporting a build failure.
-- The happy path is now proven; the next feature — **LLM-driven build-failure recovery** —
-  needs a *failing* bump to react to. A deliberately incompatible recommended version (e.g.
-  a major bump that breaks the API the sample calls) should be added as a second scenario
-  to drive that work.
+`mvn clean install` is green across the whole reactor **and** `mvn dependency:tree` confirms
+every finding resolved to the recommended version **in every module it appears in** — the
+per-module sections are aggregated, so a mismatch in any module would be caught.
