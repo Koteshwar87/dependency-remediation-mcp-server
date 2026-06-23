@@ -1,0 +1,5 @@
+# Keep the Maven wrapper scripts correct per platform regardless of core.autocrlf
+mvnw      text eol=lf
+mvnw.cmd  text eol=crlf
+*.jar     binary
+*.xlsx    binary

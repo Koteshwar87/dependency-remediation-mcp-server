@@ -232,6 +232,19 @@ Tools exposed today:
 
 (stdio transport reserves stdout for JSON-RPC; the server logs to stderr.)
 
+### Try it end to end (example app)
+
+[`examples/spring-boot-sample/`](examples/spring-boot-sample/) is a real, intentionally
+**vulnerable** single-module Spring Boot app used as the end-to-end test bed — one seeded
+finding per resolution class (direct / property / managed / transitive). A captured run of
+parse → fix → green build + resolved-version check lives in
+[`examples/spring-boot-sample/SHAKEOUT.md`](examples/spring-boot-sample/SHAKEOUT.md).
+
+```bash
+dep-remediation parse examples/spring-boot-sample/advisory.xlsx --app sample-app
+# apply + verify on a COPY so the committed sample stays in its "before" state
+```
+
 ---
 
 ## The advisory sheet

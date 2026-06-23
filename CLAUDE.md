@@ -63,6 +63,12 @@ Standard `src/` package (`src/dep_remediation/`). `core/` is the deterministic e
 (`from .version_compare import version_key`). Core modules are import-only (no argparse
 `main`); run via the entry points or `python -m dep_remediation.cli`.
 
+`examples/spring-boot-sample/` is a real, intentionally-**vulnerable** single-module Spring
+Boot app (one seeded finding per resolution class) used as the end-to-end test bed. Its
+`pom.xml` is committed in the "before" state — run apply/verify against a copy. The happy
+path (parse → fix → green build + resolved-version check on live Maven) is captured in
+`examples/spring-boot-sample/SHAKEOUT.md`. Regenerate its advisory with `make_advisory.py`.
+
 ## Data model
 
 The advisory is a single-tab workbook. The engine reads clean columns only — no prose

@@ -233,6 +233,19 @@ LLM-assisted build recovery, scale — is captured in section 13 (Phase 2 roadma
 `mvn dependency:tree` (Phase 3 classify + Phase 4 verify) shares the Maven toolchain the
 build runner already needs.
 
+**End-to-end shakeout done.** The happy path has been run against a real, intentionally-
+vulnerable Spring Boot app on live Maven (3.8.1 / Java 17): parse → fix (one finding per
+resolution class) → green `mvn clean install` → `dependency:tree` resolved-version check,
+all green. The sample is committed at `examples/spring-boot-sample/` (run captured in its
+`SHAKEOUT.md`) and is the standing test bed for the recovery-loop work. Two follow-ups it
+surfaced: (a) `build_runner` should fall back to system `mvn` when a `mvnw` wrapper fails to
+*launch* (vs. a real build failure); (b) add a deliberately *breaking* bump scenario to
+drive §13.3.
+
+**Next iteration (immediate):** the LLM-driven **build-failure recovery loop** (§13.3) —
+the highest-value remaining feature — plus a **multi-module reactor sample** as a second
+test bed.
+
 **Deferred Phase-5 nice-to-haves** (not blocking v1): friendly structured error results
 over MCP, a `remediate` convenience tool/command chaining parse→fix→verify, and optional
 MCP `prompts`/`resources` surfaces. Tracked under §13.5 (productization).
