@@ -180,10 +180,32 @@ dep-remediation fix ./my-app/pom.xml --from-advisory tests/fixtures/dummy_adviso
 ```
 
 Overall success requires the build green **and** every finding resolved; unresolved
-findings are surfaced for manual review. On failure the result carries the log tail, the
-failing goal, and the just-applied bumps (likely culprits) so recovery can be driven
-interactively. **Honest limit:** a green build proves the project *compiles*, not that a
-forced transitive pin is runtime-safe.
+findings are surfaced for manual review. **Honest limit:** a green build proves the project
+*compiles*, not that a forced transitive pin is runtime-safe.
+
+### Recover from a red build
+
+When an applied bump breaks the build, `verify` returns a **reasoning-ready** failure:
+a `failure_kind` (`dependency_resolution` / `compilation` / `test`), the **suspect
+coordinates** it could pin down, and the just-applied bumps (likely culprits). You then
+re-apply a *curated* fix set — drop or re-target the offender — and verify again:
+
+```bash
+# drop a finding from this run (-> manual-review); repeatable
+dep-remediation fix ./my-app/pom.xml --from-advisory advisory.xlsx --app my-app --apply \
+    --skip org.apache.commons:commons-text
+
+# re-target a finding to a known-good version instead; repeatable
+dep-remediation fix ./my-app/pom.xml --from-advisory advisory.xlsx --app my-app --apply \
+    --override io.netty:netty-handler=4.2.16.Final
+```
+
+The engine performs the edit; the *decision* of what to retry is the host LLM's job (it
+drives this bounded loop via the `apply_fixes` `overrides` + `verify_build` MCP tools — see
+the `remediate-dependencies` skill). The engine never reverts, so each attempt re-applies to
+a clean copy. A green build with any finding still unresolved is reported as **needs review**,
+never success. A full captured run is in
+[`examples/spring-boot-sample/RECOVERY.md`](examples/spring-boot-sample/RECOVERY.md).
 
 ### Run the tests
 

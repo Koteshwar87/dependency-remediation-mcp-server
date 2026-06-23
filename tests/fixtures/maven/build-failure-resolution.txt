@@ -1,0 +1,8 @@
+[INFO] Scanning for projects...
+[INFO] Building spring-boot-sample 1.0.0
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal on project spring-boot-sample: Could not resolve dependencies for project com.example:spring-boot-sample:jar:1.0.0
+[ERROR] Could not find artifact org.apache.commons:commons-text:jar:99.0.0 in central (https://repo.maven.apache.org/maven2)
+[ERROR] -> [Help 1]

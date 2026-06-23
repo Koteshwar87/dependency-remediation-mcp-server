@@ -33,6 +33,20 @@ _TREE_LINE = re.compile(
     r"([\w.\-]+)(?::[\w.\-]+)?")
 _FAILED_GOAL = re.compile(r"Failed to execute goal .*?:([\w\-]+)\s*\(")
 
+# Failure-classification signals (Maven log strings).
+_RESOLUTION_MARKERS = ("Could not resolve dependencies", "Could not find artifact",
+                       "Failure to find", "The following artifacts could not be resolved")
+# "Could not find artifact org.apache.commons:commons-text:jar:99.0.0 in central"
+_ARTIFACT_COORD = re.compile(
+    r"(?:Could not find artifact|could not be resolved)[^\n]*?"
+    r"([\w.\-]+):([\w.\-]+):(?:jar|pom|war|ear|maven-plugin|bundle|test-jar):([\w.\-]+)")
+
+# Failure kinds.
+DEPENDENCY_RESOLUTION = "dependency_resolution"
+COMPILATION = "compilation"
+TEST = "test"
+UNKNOWN = "unknown"
+
 
 @dataclass
 class Resolution:
@@ -51,6 +65,8 @@ class BuildResult:
     attempted: list[dict] = field(default_factory=list)  # coordinate->expected, likely culprits on failure
     log_tail: str = ""
     failing_goal: str = ""
+    failure_kind: str = ""   # dependency_resolution / compilation / test / unknown (on failure)
+    suspects: list[str] = field(default_factory=list)  # coordinates implicated by the failure
     success: bool = False
     message: str = ""
 
@@ -69,6 +85,28 @@ def interpret_build(returncode: int, output: str):
         if m:
             goal = m.group(1)
     return passed, log_tail, goal
+
+
+def classify_failure(output: str, failing_goal: str = ""):
+    """Classify a failed build into (kind, suspects) for the recovery loop.
+
+    `kind` is one of DEPENDENCY_RESOLUTION / COMPILATION / TEST / UNKNOWN. `suspects` is a
+    list of `groupId:artifactId` coordinates implicated by the failure (only resolution
+    failures name a coordinate; compile/test failures correlate with the *attempted* bumps,
+    which the caller already has). Pure string analysis — no Maven, no LLM.
+    """
+    if any(marker in output for marker in _RESOLUTION_MARKERS):
+        suspects = []
+        for group, artifact, _version in _ARTIFACT_COORD.findall(output):
+            coord = f"{group}:{artifact}"
+            if coord not in suspects:
+                suspects.append(coord)
+        return DEPENDENCY_RESOLUTION, suspects
+    if "COMPILATION ERROR" in output or failing_goal in ("compile", "testCompile"):
+        return COMPILATION, []
+    if "There are test failures" in output or "Tests run:" in output or failing_goal in ("test", "surefire"):
+        return TEST, []
+    return UNKNOWN, []
 
 
 def parse_resolved_versions(tree_output: str) -> dict[str, set[str]]:
@@ -150,7 +188,8 @@ def verify(project_dir: str, findings=(), *, runner=_default_runner) -> BuildRes
     result.exit_code = rc
     result.build_passed, result.log_tail, result.failing_goal = interpret_build(rc, out)
     if not result.build_passed:
-        result.message = "build failed"
+        result.failure_kind, result.suspects = classify_failure(out, result.failing_goal)
+        result.message = f"build failed ({result.failure_kind})"
         return result
 
     if findings:
@@ -179,6 +218,10 @@ def print_result(result: BuildResult):
         "BUILD FAILED" if not result.build_passed else "NEEDS REVIEW")
     print(f"  Overall: {verdict}")
     if not result.build_passed:
+        if result.failure_kind:
+            print(f"  Failure kind: {result.failure_kind}")
+        if result.suspects:
+            print(f"  Suspect coordinates: {', '.join(result.suspects)}")
         if result.failing_goal:
             print(f"  Failing goal: {result.failing_goal}")
         if result.attempted:

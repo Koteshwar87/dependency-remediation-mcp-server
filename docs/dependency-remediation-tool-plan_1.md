@@ -308,14 +308,27 @@ Goal: after a green build, raise a clean PR instead of stopping.
 Goal: shrink the "needs manual review" bucket by letting the model diagnose and fix
 breakages an upgrade introduces.
 
-- When `mvn clean install` fails post-upgrade, hand the build log + diff + pom context
-  to the LLM (through the MCP/adapter layer) to propose a corrective change
-  (e.g. an aligned transitive bump, a needed property change, an exclusion).
-- Always **re-run the build** to verify the LLM's fix; never trust it blindly.
-- Cap the retry loop (e.g. 2–3 attempts) and fall back to manual review with a clear
-  explanation of what was tried.
-- This is the one place model quality matters — but it remains an *enhancement*: the
-  deterministic path still produces value without it.
+**Iteration 1 — delivered.** The loop is **host-LLM-driven** (the core stays deterministic /
+LLM-free). The engine supplies reasoning-ready facts and a curated re-apply primitive; the
+judgment lives in the `remediate-dependencies` skill's bounded loop:
+- `build_runner.classify_failure` turns a red `mvn` log into a `failure_kind`
+  (`dependency_resolution` / `compilation` / `test` / `unknown`) + **suspect coordinates**,
+  surfaced on `BuildResult` alongside `log_tail`/`failing_goal`/`attempted`.
+- `advisory_parser.apply_overrides` re-applies a curated fix set — drop a finding
+  (`""` → manual-review) or re-target it to a given version — exposed as CLI
+  `fix --skip/--override` and the MCP `apply_fixes(overrides=...)` arg.
+- The skill drives a **bounded** (≤3) loop, re-applying to a clean copy each attempt
+  (the engine does not revert); a green build with any finding unresolved is **needs-review**,
+  never success. Captured run: `examples/spring-boot-sample/RECOVERY.md` (driven by
+  `advisory-breaking.xlsx`).
+
+**Still deferred (next iterations):**
+- Auto-discovering a *replacement* version (query Maven metadata) instead of dropping to
+  manual-review on a bad/yanked recommended version.
+- Proposing structural corrections (aligned transitive bump, property change, exclusion) for
+  compile/test breaks, not just drop/re-target.
+- A fully autonomous loop (no host LLM) — only if a use case needs the adapter to self-drive;
+  the deterministic path keeps producing value without it.
 
 ### 13.4 Broader pom-structure coverage
 

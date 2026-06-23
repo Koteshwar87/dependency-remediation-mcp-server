@@ -12,9 +12,22 @@ import argparse
 import json
 import os
 
-from .core.advisory_parser import parse, print_report
+from .core.advisory_parser import parse, print_report, apply_overrides
 from .core.pom_fixer import apply_fixes, print_result
 from .core import build_runner
+
+
+def _collect_overrides(override_args, skip_args) -> dict:
+    """Build the overrides map from repeatable --override coord=version / --skip coord."""
+    overrides = {}
+    for item in skip_args or []:
+        overrides[item] = ""  # drop → manual-review
+    for item in override_args or []:
+        coord, sep, version = item.partition("=")
+        if not sep or not version:
+            raise SystemExit(f"--override expects coord=version, got: {item!r}")
+        overrides[coord] = version
+    return overrides
 
 
 def _cmd_parse(args):
@@ -30,10 +43,11 @@ def _cmd_fix(args):
         raise SystemExit("--verify requires --apply (nothing is written in a dry-run)")
     rep = parse(args.from_advisory, args.app,
                 base_image_filter=not args.no_base_image_filter)
-    result = apply_fixes(args.pom, rep.findings, dry_run=not args.apply)
+    findings = apply_overrides(rep.findings, _collect_overrides(args.override, args.skip))
+    result = apply_fixes(args.pom, findings, dry_run=not args.apply)
     build = None
     if args.verify and result.applied:
-        build = build_runner.verify(os.path.dirname(args.pom) or ".", rep.findings)
+        build = build_runner.verify(os.path.dirname(args.pom) or ".", findings)
     if args.json:
         out = {"fix": result.to_dict()}
         if build is not None:
@@ -80,6 +94,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="write changes (default is dry-run: show the diff only)")
     f.add_argument("--verify", action="store_true",
                    help="after --apply, run mvn clean install + dependency:tree to gate the build")
+    f.add_argument("--override", action="append", metavar="COORD=VERSION", default=[],
+                   help="re-target a finding to VERSION (repeatable; for build-failure recovery)")
+    f.add_argument("--skip", action="append", metavar="COORD", default=[],
+                   help="drop a finding from this run -> manual-review (repeatable; for recovery)")
     f.add_argument("--json", action="store_true", help="emit JSON instead of text")
     f.add_argument("--no-base-image-filter", action="store_true",
                    help="do not skip rows where Base image vulnerability = TRUE")

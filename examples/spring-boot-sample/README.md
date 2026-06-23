@@ -36,7 +36,9 @@ dep-remediation fix pom.xml --from-advisory advisory.xlsx --app sample-app --app
 dep-remediation verify . --from-advisory advisory.xlsx --app sample-app
 ```
 
-A captured run lives in [`SHAKEOUT.md`](SHAKEOUT.md).
+A captured happy-path run lives in [`SHAKEOUT.md`](SHAKEOUT.md). `make_advisory.py` also
+emits `advisory-breaking.xlsx` (one finding recommends a non-existent version) to drive the
+**build-failure recovery loop** — a captured recovery run is in [`RECOVERY.md`](RECOVERY.md).
 
 ## Requirements
 
