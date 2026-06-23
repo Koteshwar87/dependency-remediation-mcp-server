@@ -43,9 +43,9 @@ Do not hand-edit the dedupe result; if a chosen version looks wrong, check it wi
 
 ```bash
 # dry-run (shows the diff; or: the apply_fixes MCP tool with apply=False)
-dep-remediation fix <pom.xml> --from-advisory <advisory.xlsx> --app <owner>
+dep-remediation fix <pom.xml-or-project-dir> --from-advisory <advisory.xlsx> --app <owner>
 # write the changes
-dep-remediation fix <pom.xml> --from-advisory <advisory.xlsx> --app <owner> --apply
+dep-remediation fix <pom.xml-or-project-dir> --from-advisory <advisory.xlsx> --app <owner> --apply
 ```
 
 **Dry-run first**, show the diff, apply only on confirmation. The engine first
@@ -59,8 +59,14 @@ dep-remediation fix <pom.xml> --from-advisory <advisory.xlsx> --app <owner> --ap
 - `ambiguous` (unresolvable property) → **needs-manual-review** bucket — list it
   explicitly; never guess-edit.
 
-Relay the resolution log (per finding: class → strategy) and the diff. The fixer is
-idempotent and never downgrades (re-running on a fixed pom is a no-op). BOM/parent
+**Multi-module reactors are auto-targeted.** Point `fix` at the **project dir or aggregator
+pom** and the engine routes each finding to the right pom by itself: direct/property findings
+are edited in the module that declares them; managed/transitive findings are pinned once in
+the aggregator (inherited by all modules). Do **not** hand-route with per-module commands —
+the result lists per-pom actions under `poms`, each action tagged with its `pom_path`.
+
+Relay the resolution log (per finding: class → strategy → which pom) and the diff. The fixer
+is idempotent and never downgrades (re-running on a fixed pom is a no-op). BOM/parent
 upgrades are not auto-applied in v1.
 
 ### 3. Verify the build (Phase 4 — `build_runner.py`, available now)

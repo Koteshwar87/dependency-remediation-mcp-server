@@ -13,6 +13,7 @@ resolution log plus a "needs manual review" bucket for anything not safely fixab
 """
 from __future__ import annotations
 import difflib
+import os
 from dataclasses import dataclass, asdict, field
 
 from lxml import etree
@@ -190,8 +191,15 @@ def _add_pin(root, q: str, coordinate: str, version: str, indent_unit: str):
     comment.tail = "\n" + indent_unit * _depth(dep)  # keep <dependency> on its own line
 
 
-def plan_fixes(pom_path: str, findings: list[Finding]) -> FixResult:
-    """Classify and compute fixes for `findings` against `pom_path` (no write)."""
+def plan_fixes(pom_path: str, findings: list[Finding], *, pin_unmatched: bool = True) -> FixResult:
+    """Classify and compute fixes for `findings` against `pom_path` (no write).
+
+    `pin_unmatched` controls what happens to a finding this pom does not declare with a
+    fixable version (managed-versionless / transitive). Default True adds a
+    `<dependencyManagement>` pin here. Set False during a reactor per-module pass so a
+    module only gets edits for what it actually declares; the unmatched findings are then
+    routed to the aggregator by `apply_remediation`.
+    """
     parser = etree.XMLParser(remove_blank_text=False)
     tree = etree.parse(pom_path, parser)
     root = tree.getroot()
@@ -225,7 +233,10 @@ def plan_fixes(pom_path: str, findings: list[Finding]) -> FixResult:
                 f.coordinate, rclass, strategy, current, f.recommended_version))
             continue
 
-        # managed-by-parent or transitive -> add a dependencyManagement pin
+        # managed-by-parent or transitive -> add a dependencyManagement pin (unless this is
+        # a reactor per-module pass, where unmatched findings are routed to the aggregator)
+        if not pin_unmatched:
+            continue
         _add_pin(root, q, f.coordinate, f.recommended_version, indent_unit)
         result.actions.append(FixAction(
             f.coordinate, rclass, ADD_PIN, "", f.recommended_version,
@@ -240,15 +251,122 @@ def plan_fixes(pom_path: str, findings: list[Finding]) -> FixResult:
     return result
 
 
-def apply_fixes(pom_path: str, findings: list[Finding], *, dry_run: bool = True) -> FixResult:
+def apply_fixes(pom_path: str, findings: list[Finding], *, dry_run: bool = True,
+                pin_unmatched: bool = True) -> FixResult:
     """Plan fixes and, unless dry_run, write the modified pom back to disk."""
-    result = plan_fixes(pom_path, findings)
+    result = plan_fixes(pom_path, findings, pin_unmatched=pin_unmatched)
     changed = any(a.strategy != SKIP_NOT_HIGHER for a in result.actions)
     if not dry_run and changed:
         with open(pom_path, "w", encoding="utf-8", newline="") as fh:
             fh.write(result._after)  # type: ignore[attr-defined]
         result.applied = True
     return result
+
+
+# --------------------------------------------------------------------------------------
+# Reactor (multi-module) auto fix-targeting
+# --------------------------------------------------------------------------------------
+
+@dataclass
+class ReactorFixResult:
+    """Aggregates per-pom FixResults for a (possibly single-module) project. root pom first."""
+    root: str
+    results: list[FixResult] = field(default_factory=list)
+
+    @property
+    def applied(self) -> bool:
+        return any(r.applied for r in self.results)
+
+    def to_dict(self):
+        actions, manual, diffs = [], [], []
+        for r in self.results:
+            for a in r.actions:
+                d = asdict(a); d["pom_path"] = r.pom_path; actions.append(d)
+            for m in r.manual_review:
+                d = asdict(m); d["pom_path"] = r.pom_path; manual.append(d)
+            if r.diff:
+                diffs.append(r.diff)
+        return {"root": self.root, "applied": self.applied, "actions": actions,
+                "manual_review": manual, "diff": "\n".join(diffs),
+                "poms": [r.to_dict() for r in self.results]}
+
+
+def _resolve_root_pom(target: str) -> str:
+    """Accept a project dir or a pom path; return the pom path to start from."""
+    return os.path.join(target, "pom.xml") if os.path.isdir(target) else target
+
+
+def _module_poms(pom_path: str, q: str, root) -> list[str]:
+    """Pom paths for the <modules> of an aggregator pom (each <module> is a directory)."""
+    modules = _find_one(root, f"{q}modules")
+    if modules is None:
+        return []
+    base = os.path.dirname(os.path.abspath(pom_path))
+    out = []
+    for m in modules.findall(f"{q}module"):
+        name = (m.text or "").strip()
+        if name:
+            out.append(os.path.join(base, name, "pom.xml"))
+    return out
+
+
+def discover_reactor(root_pom: str) -> list[str]:
+    """All pom paths in the reactor rooted at `root_pom` (root first), recursing into
+    nested aggregators. A non-aggregator pom yields a 1-element list."""
+    parser = etree.XMLParser(remove_blank_text=False)
+    poms = [root_pom]
+    tree = etree.parse(root_pom, parser)
+    root = tree.getroot()
+    q = _ns_qname(root)
+    for child_pom in _module_poms(root_pom, q, root):
+        if os.path.isfile(child_pom):
+            poms.extend(discover_reactor(child_pom))
+    return poms
+
+
+def apply_remediation(target: str, findings: list[Finding], *, dry_run: bool = True) -> ReactorFixResult:
+    """Auto-target findings across a (possibly multi-module) project and apply.
+
+    `target` may be a project dir or a pom. For a reactor, each finding declared with a
+    fixable version in a module is edited there; findings declared with a fixable version in
+    no module (managed-versionless / transitive) are pinned once in the aggregator, inherited
+    by all modules. A single-module pom keeps the original edit-or-pin-here behavior.
+    """
+    root_pom = _resolve_root_pom(target)
+    poms = discover_reactor(root_pom)
+
+    if len(poms) == 1:
+        return ReactorFixResult(root_pom, [apply_fixes(root_pom, findings, dry_run=dry_run)])
+
+    # per-module pass: edits only (no pinning); track what each module handled
+    handled: set[str] = set()
+    module_results = []
+    for pom in poms[1:]:
+        res = apply_fixes(pom, findings, dry_run=dry_run, pin_unmatched=False)
+        module_results.append(res)
+        handled.update(a.coordinate for a in res.actions)
+        handled.update(m.coordinate for m in res.manual_review)
+
+    # everything not handled by a module -> edit-or-pin at the aggregator root
+    remaining = [f for f in findings if f.coordinate not in handled]
+    root_res = apply_fixes(root_pom, remaining, dry_run=dry_run, pin_unmatched=True)
+    return ReactorFixResult(root_pom, [root_res] + module_results)
+
+
+def plan_remediation(target: str, findings: list[Finding]) -> ReactorFixResult:
+    """Dry-run alias of apply_remediation (computes the cross-pom plan, writes nothing)."""
+    return apply_remediation(target, findings, dry_run=True)
+
+
+def print_reactor_result(result: ReactorFixResult):
+    multi = len(result.results) > 1
+    if multi:
+        print(f"Reactor: {result.root}  ({len(result.results)} poms)\n")
+    for i, r in enumerate(result.results):
+        if multi and i:
+            print()
+        print_result(r)
+    print(f"\nApplied (any pom): {result.applied}")
 
 
 def print_result(result: FixResult):

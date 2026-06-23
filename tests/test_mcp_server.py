@@ -73,6 +73,25 @@ def test_call_apply_fixes_dry_run(tmp_path):
     assert "4.2.4.Final" in pom.read_text(encoding="utf-8")
 
 
+def test_call_apply_fixes_reactor_auto_targets(tmp_path):
+    # point apply_fixes at an aggregator dir -> it auto-targets across modules and returns
+    # the unified reactor shape (poms breakdown + actions tagged with their pom_path).
+    reactor = tmp_path / "reactor"
+    shutil.copytree(FIXTURES / "poms" / "reactor", reactor)
+
+    async def go():
+        async with create_connected_server_and_client_session(mcp) as client:
+            data = _result_dict(await client.call_tool(
+                "apply_fixes", {"pom_path": str(reactor), "xlsx_path": ADVISORY, "app": "app-alpha"}))
+            assert len(data["poms"]) == 3              # aggregator + 2 modules
+            assert data["root"].endswith("pom.xml")
+            # netty-handler (managed in module-app) is pinned in the aggregator, not the module
+            netty = next(a for a in data["actions"] if a["coordinate"] == "io.netty:netty-handler")
+            assert netty["pom_path"] == data["root"]
+            assert data["applied"] is False            # dry-run
+    _run(go())
+
+
 def test_call_apply_fixes_with_skip_override(tmp_path):
     pom = tmp_path / "direct.xml"
     shutil.copy(FIXTURES / "poms" / "direct.xml", pom)

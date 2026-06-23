@@ -340,13 +340,15 @@ remediation strategies v1 deliberately leaves manual (§7).
   v1 only *suggests* this; here it becomes an applied strategy.
 - **`<exclusions>`-based surgery** and **auto-bumping the introducing direct dependency**
   for transitive vulns where a plain `<dependencyManagement>` pin is insufficient.
-- Reactor-aware *fix application* (build/verify of reactors already works in Phase 4 and is
-  now shaken out on live Maven against the multi-module `examples/spring-boot-sample/`):
-  **auto fix-targeting** — choosing automatically which pom each finding belongs in (the
-  module that declares a direct/property version vs. the parent/aggregator for a
-  managed/transitive pin, since a pin can't override a module's explicit `<version>`). Today
-  this routing is manual (`fix` per pom, using `--skip` to send the right subset); the
-  reactor sample exists specifically to motivate and test automating it.
+- Reactor-aware *fix application* — **auto fix-targeting: delivered.** `pom_fixer`
+  (`discover_reactor` + `apply_remediation` → `ReactorFixResult`) discovers every pom in the
+  reactor and routes each finding automatically: direct/property findings are edited in the
+  module that declares them; managed/transitive findings are pinned once in the
+  aggregator (inherited by all modules, since a pin can't override a module's explicit
+  `<version>`). One command (`fix <project-dir>`, or the `apply_fixes` MCP tool) fixes the
+  whole reactor — shaken out on live Maven against `examples/spring-boot-sample/`. Remaining
+  reactor work: choosing parent-vs-specific-module when several poms could host a pin, and the
+  edge where a coordinate is direct in one module but arrives in another via a different path.
 - Property-indirection chains and profiles.
 - Each added case ships with tests against real-world pom fixtures.
 

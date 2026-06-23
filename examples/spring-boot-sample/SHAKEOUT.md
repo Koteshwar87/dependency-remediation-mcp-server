@@ -29,29 +29,28 @@ Unique libraries to fix: 4
   org.yaml:snakeyaml                        2.2      -> 2.3
 ```
 
-## 2. Targeted fix — route each finding to the right pom
+## 2. Fix — one command, auto-targeted across the reactor
 
-A `<dependencyManagement>` pin only affects its own module subtree and **cannot override a
-module's explicit `<version>`**, so the fix is routed (the `--skip` flag does the routing):
+Point `fix` at the project; the engine routes each finding to the right pom on its own (a
+`<dependencyManagement>` pin can't override a module's explicit `<version>`, so direct/property
+findings are edited in the declaring module and managed/transitive ones are pinned in the
+aggregator):
 
 ```
-# direct + property live in sample-core -> edit there (skip the managed/transitive ones)
-$ dep-remediation fix sample-core/pom.xml --from-advisory advisory.xlsx --app sample-app \
-      --skip org.yaml:snakeyaml --skip org.apache.tomcat.embed:tomcat-embed-core --apply
-Actions: 2
-  [property/edit-property] org.apache.commons:commons-collections4: 4.1 -> 4.4
-  [direct/edit-version]    org.apache.commons:commons-text: 1.9 -> 1.10.0
-
-# managed + transitive -> pin in the AGGREGATOR (inherited by every module)
-$ dep-remediation fix pom.xml --from-advisory advisory.xlsx --app sample-app \
-      --skip org.apache.commons:commons-text --skip org.apache.commons:commons-collections4 --apply
-Actions: 2
+$ dep-remediation fix . --from-advisory advisory.xlsx --app sample-app --apply
+Reactor: ./pom.xml  (3 poms)
+Pom: ./pom.xml
   [transitive/add-pin] org.apache.tomcat.embed:tomcat-embed-core: ... -> 10.1.25
   [transitive/add-pin] org.yaml:snakeyaml: ... -> 2.3
+Pom: ./sample-core/pom.xml
+  [property/edit-property] org.apache.commons:commons-collections4: 4.1 -> 4.4
+  [direct/edit-version]    org.apache.commons:commons-text: 1.9 -> 1.10.0
+Pom: ./sample-web/pom.xml
+  (no changes)
 ```
 
-> This manual routing is exactly the gap **auto fix-targeting** (plan §13.4) will close —
-> the engine deciding which parent/module pom each finding belongs in.
+No `--skip`, no per-module commands — `sample-web` correctly gets nothing (its snakeyaml is
+pinned in the aggregator and inherited).
 
 ## 3. Verify at the aggregator root — reactor-wide
 

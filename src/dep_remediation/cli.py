@@ -13,7 +13,7 @@ import json
 import os
 
 from .core.advisory_parser import parse, print_report, apply_overrides
-from .core.pom_fixer import apply_fixes, print_result
+from .core.pom_fixer import apply_remediation, print_reactor_result
 from .core import build_runner
 
 
@@ -44,17 +44,17 @@ def _cmd_fix(args):
     rep = parse(args.from_advisory, args.app,
                 base_image_filter=not args.no_base_image_filter)
     findings = apply_overrides(rep.findings, _collect_overrides(args.override, args.skip))
-    result = apply_fixes(args.pom, findings, dry_run=not args.apply)
+    result = apply_remediation(args.pom, findings, dry_run=not args.apply)
     build = None
     if args.verify and result.applied:
-        build = build_runner.verify(os.path.dirname(args.pom) or ".", findings)
+        build = build_runner.verify(os.path.dirname(result.root) or ".", findings)
     if args.json:
         out = {"fix": result.to_dict()}
         if build is not None:
             out["verify"] = build.to_dict()
         print(json.dumps(out, indent=2))
     else:
-        print_result(result)
+        print_reactor_result(result)
         if build is not None:
             print()
             build_runner.print_result(build)
@@ -86,8 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="do not skip rows where Base image vulnerability = TRUE")
     p.set_defaults(func=_cmd_parse)
 
-    f = sub.add_parser("fix", help="apply advisory upgrades to a pom.xml")
-    f.add_argument("pom", help="path to the Spring Boot pom.xml")
+    f = sub.add_parser("fix", help="apply advisory upgrades to a pom.xml or reactor")
+    f.add_argument("pom", help="path to a pom.xml, or a project dir / aggregator pom "
+                              "(a multi-module reactor is auto-targeted across its modules)")
     f.add_argument("--from-advisory", required=True, help="path to advisory .xlsx")
     f.add_argument("--app", required=True, help="owner/app name to filter by")
     f.add_argument("--apply", action="store_true",
