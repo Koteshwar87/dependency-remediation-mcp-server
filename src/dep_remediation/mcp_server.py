@@ -17,7 +17,7 @@ import logging
 from mcp.server.fastmcp import FastMCP
 
 from .core.advisory_parser import parse, apply_overrides
-from .core.pom_fixer import apply_fixes as _apply_fixes
+from .core.pom_fixer import apply_remediation
 from .core import build_runner
 
 logging.basicConfig(level=logging.INFO)  # logging defaults to stderr (stdout = JSON-RPC)
@@ -45,30 +45,37 @@ def parse_advisory(xlsx_path: str, app: str, base_image_filter: bool = True) -> 
 @mcp.tool()
 def apply_fixes(pom_path: str, xlsx_path: str, app: str, apply: bool = False,
                 overrides: dict[str, str] | None = None) -> dict:
-    """Apply an advisory's recommended Java upgrades to a Spring Boot pom.xml.
+    """Apply an advisory's recommended Java upgrades to a Spring Boot project.
 
-    Parses the advisory for `app`, then classifies how each library resolves in the pom
-    (direct version / property / managed / transitive) and either edits the version in
-    place or adds a <dependencyManagement> pin. Returns the resolution log (actions),
-    the manual-review bucket, and a unified diff.
+    Parses the advisory for `app`, then classifies how each library resolves (direct version
+    / property / managed / transitive) and either edits the version in place or adds a
+    <dependencyManagement> pin.
 
-    Defaults to a DRY RUN (`apply=False`): nothing is written, the diff shows what would
-    change. Set `apply=True` to write the pom. Idempotent and never downgrades.
+    `pom_path` may be a single pom, OR a project dir / aggregator pom — a multi-module
+    reactor is **auto-targeted**: each finding declared in a module is edited there, and
+    managed/transitive findings are pinned once in the aggregator (inherited by all modules).
+    No manual per-module routing is needed.
+
+    Returns a unified result: top-level `applied`, `actions` (each tagged with its `pom_path`),
+    `manual_review`, `diff`, plus `poms` (the per-pom breakdown) and `root`.
+
+    Defaults to a DRY RUN (`apply=False`): nothing is written. Set `apply=True` to write.
+    Idempotent and never downgrades.
 
     `overrides` curates the fix set for the build-failure recovery loop: map a coordinate
     to a replacement version to re-target it, or to "" to drop it (skip → manual-review).
-    The engine does NOT revert prior edits, so re-apply against a clean copy of the pom.
+    The engine does NOT revert prior edits, so re-apply against a clean copy.
 
     Args:
-        pom_path: Path to the Spring Boot pom.xml to edit.
+        pom_path: A pom.xml, or a project dir / aggregator pom (reactor auto-targeted).
         xlsx_path: Path to the advisory .xlsx file.
         app: The owner/app name to filter by (matched case-insensitively).
-        apply: Write changes to the pom when True; otherwise dry-run (default).
+        apply: Write changes when True; otherwise dry-run (default).
         overrides: Optional {coordinate: version} re-targets; "" drops that finding.
     """
     rep = parse(xlsx_path, app)
     findings = apply_overrides(rep.findings, overrides)
-    return _apply_fixes(pom_path, findings, dry_run=not apply).to_dict()
+    return apply_remediation(pom_path, findings, dry_run=not apply).to_dict()
 
 
 @mcp.tool()

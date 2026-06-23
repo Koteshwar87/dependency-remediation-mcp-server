@@ -54,7 +54,7 @@ Standard `src/` package (`src/dep_remediation/`). `core/` is the deterministic e
 |--------|-------|---------|
 | `core/advisory_parser.py` | 1 ✅ | Read Excel, apply filter chain, extract fields, dedupe → `Report`; `apply_overrides` curates a findings list for recovery |
 | `core/version_compare.py` | 2 ✅ | Maven-aware `compare()` / `version_key` / `max_version()` |
-| `core/pom_fixer.py` | 3 ✅ | Classify resolution (direct/property/managed/transitive) + apply upgrades to `pom.xml` (`plan_fixes`/`apply_fixes` → `FixResult`) |
+| `core/pom_fixer.py` | 3 ✅ | Classify resolution (direct/property/managed/transitive) + apply upgrades to `pom.xml` (`plan_fixes`/`apply_fixes` → `FixResult`); **reactor auto fix-targeting** (`discover_reactor` + `apply_remediation`/`plan_remediation` → `ReactorFixResult`) routes each finding to the right module/aggregator pom |
 | `core/build_runner.py` | 4 ✅ | `mvn clean install` + `dependency:tree` resolution check (reactor-aware), green-build gating; `classify_failure` → `failure_kind`/`suspects` (`verify` → `BuildResult`) |
 | `cli.py` | ✅ | `dep-remediation` entry point — `parse` / `fix` (`--apply`/`--verify`/`--skip`/`--override`) / `verify` subcommands over `core/` |
 | `mcp_server.py` | 5 ✅ | `dep-remediation-mcp` FastMCP server; `parse_advisory` + `apply_fixes` (with `overrides`) + `verify_build` tools, protocol-tested |
@@ -78,9 +78,10 @@ class, spread across modules) used as the end-to-end test bed. Poms are committe
 "before" state — run apply/verify against a copy. The happy path and the build-failure
 recovery loop are captured on live Maven in `examples/spring-boot-sample/SHAKEOUT.md` and
 `RECOVERY.md`. Regenerate its advisories with `make_advisory.py`. **Reactor fix-targeting is
-manual today** — route each finding to the right pom (direct/property → the module that
-declares it; managed/transitive → the aggregator, inherited by all modules), using `--skip`
-to send the right subset to each pom. Auto fix-targeting is plan §13.4.
+automatic** (`apply_remediation`): point `fix` (or the `apply_fixes` MCP tool) at the project
+dir / aggregator pom and the engine routes each finding to the right pom — direct/property →
+the declaring module; managed/transitive → the aggregator, inherited by all modules.
+`--skip`/`--override` remain as a manual escape hatch (e.g. recovery).
 
 ## Data model
 

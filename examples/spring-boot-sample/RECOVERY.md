@@ -6,12 +6,12 @@ The driver is `advisory-breaking.xlsx` — identical to `advisory.xlsx` except t
 or typo'd advisory entry. `commons-text` lives in `sample-core`, so the failure surfaces
 there and aborts the reactor. Run against a throwaway copy.
 
-## Attempt 1 — apply everything, the reactor goes red
-
-Targeted fix as in the happy path (direct/property in `sample-core`, pins in the aggregator),
-but with the bad `commons-text 99.0.0`:
+## Attempt 1 — fix the reactor (one command, auto-targeted), build goes red
 
 ```
+$ dep-remediation fix . --from-advisory advisory-breaking.xlsx --app sample-app --apply
+# commons-text 99.0.0 edited in sample-core; snakeyaml + tomcat pinned in the aggregator
+
 $ dep-remediation verify . --from-advisory advisory-breaking.xlsx --app sample-app
   Build: FAILED (exit 1)
   Overall: BUILD FAILED
@@ -35,17 +35,21 @@ coordinate (`com.example:sample-core:jar:1.0.0`) for the culprit.
 repo). v1 does not auto-discover a replacement, so the safe move is to **drop** the suspect
 to manual-review and keep the rest.
 
-## Attempt 2 — re-apply the curated set (skip the suspect)
+## Attempt 2 — re-run with the suspect dropped (still one command)
 
-Re-applied against a **fresh copy** (the engine does not revert):
+Re-applied against a **fresh copy** (the engine does not revert). `--skip` drops the suspect;
+auto-targeting still routes the rest:
 
 ```
-$ dep-remediation fix sample-core/pom.xml --from-advisory advisory-breaking.xlsx --app sample-app \
-      --skip org.apache.commons:commons-text \
-      --skip org.yaml:snakeyaml --skip org.apache.tomcat.embed:tomcat-embed-core --apply
-Actions: 1
+$ dep-remediation fix . --from-advisory advisory-breaking.xlsx --app sample-app \
+      --skip org.apache.commons:commons-text --apply
+Pom: ./pom.xml
+  [transitive/add-pin] org.apache.tomcat.embed:tomcat-embed-core: ... -> 10.1.25
+  [transitive/add-pin] org.yaml:snakeyaml: ... -> 2.3
+Pom: ./sample-core/pom.xml
   [property/edit-property] org.apache.commons:commons-collections4: 4.1 -> 4.4
-# (aggregator pins for snakeyaml + tomcat-embed-core applied as in the happy path)
+Pom: ./sample-web/pom.xml
+  (no changes)
 
 $ dep-remediation verify . --from-advisory advisory-breaking.xlsx --app sample-app
   Build: GREEN (exit 0)

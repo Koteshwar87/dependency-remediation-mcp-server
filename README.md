@@ -128,12 +128,20 @@ editing a direct `<version>`/property, or adding a `<dependencyManagement>` pin 
 BOM-managed/transitive libraries. **Dry-run by default** (prints the diff); pass
 `--apply` to write. Idempotent and never downgrades.
 
+**Multi-module reactors are auto-targeted:** point `fix` at the **project dir or aggregator
+pom** and the engine routes each finding to the correct pom on its own — direct/property
+findings are edited in the module that declares them, while managed/transitive findings are
+pinned once in the aggregator (inherited by every module). No per-module commands.
+
 ```bash
 # Dry-run: show the resolution log + diff (add --json for machine-readable output)
 dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha
 
-# Apply the changes
+# Apply the changes (single pom)
 dep-remediation fix path/to/pom.xml --from-advisory tests/fixtures/dummy_advisory.xlsx --app app-alpha --apply
+
+# Whole multi-module project in one command (point at the project dir or aggregator pom)
+dep-remediation fix path/to/project --from-advisory advisory.xlsx --app my-app --apply
 ```
 
 Each finding is reported with its resolution class and the strategy applied:
