@@ -82,7 +82,7 @@ Restart the client after editing its config.
 | Tool | Purpose | Notes |
 |------|---------|-------|
 | `parse_advisory(xlsx_path, app, base_image_filter=True)` | Deduped Java fix list for one app | read-only |
-| `apply_fixes(pom_path, xlsx_path, app, apply=False)` | Classify + apply upgrades to a pom | **dry-run by default**; set `apply=True` to write |
+| `apply_fixes(pom_path, xlsx_path, app, apply=False, overrides=None)` | Classify + apply upgrades to a pom | **dry-run by default**; set `apply=True` to write. `overrides={coord: ""}` drops a finding, `{coord: "x.y"}` re-targets it (build-failure recovery) |
 | `verify_build(project_dir, xlsx_path="", app="")` | `mvn clean install` + resolved-version check | point at the aggregator root for a reactor; needs Maven |
 
 Typical flow from the assistant: `parse_advisory` → `apply_fixes` (review the diff) →

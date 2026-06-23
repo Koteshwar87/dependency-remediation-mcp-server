@@ -48,16 +48,31 @@ ROWS = [
 ]
 
 
-def main() -> None:
+# One extra finding with a non-existent recommended version (models a yanked/typo'd
+# advisory entry). It forces a Maven dependency-resolution failure so the build-failure
+# recovery loop has a real red build to diagnose and recover from.
+BREAKING_ROW = (
+    "sample-app", "Java", "org.apache.commons:commons-text", "1.9", "99.0.0", "99.0.0",
+    "FALSE", "Bad recommended version for `org.apache.commons:commons-text` (does not exist).")
+
+
+def _write(path: Path, rows) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "advisory"
     ws.append(HEADERS)
-    for row in ROWS:
+    for row in rows:
         ws.append(list(row))
-    out = Path(__file__).with_name("advisory.xlsx")
-    wb.save(out)
-    print(f"wrote {out}  ({len(ROWS)} rows)")
+    wb.save(path)
+    print(f"wrote {path}  ({len(rows)} rows)")
+
+
+def main() -> None:
+    here = Path(__file__).parent
+    _write(here / "advisory.xlsx", ROWS)
+    # breaking variant: the good findings minus the valid commons-text row, plus the bad one
+    breaking = [r for r in ROWS if r[2] != "org.apache.commons:commons-text"] + [BREAKING_ROW]
+    _write(here / "advisory-breaking.xlsx", breaking)
 
 
 if __name__ == "__main__":

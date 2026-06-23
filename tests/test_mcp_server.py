@@ -71,3 +71,22 @@ def test_call_apply_fixes_dry_run(tmp_path):
     _run(go())
     # dry-run must not have modified the copied pom
     assert "4.2.4.Final" in pom.read_text(encoding="utf-8")
+
+
+def test_call_apply_fixes_with_skip_override(tmp_path):
+    pom = tmp_path / "direct.xml"
+    shutil.copy(FIXTURES / "poms" / "direct.xml", pom)
+
+    async def go():
+        async with create_connected_server_and_client_session(mcp) as client:
+            # baseline: netty-handler is among the planned actions
+            base = _result_dict(await client.call_tool(
+                "apply_fixes", {"pom_path": str(pom), "xlsx_path": ADVISORY, "app": "app-alpha"}))
+            assert any(a["coordinate"] == "io.netty:netty-handler" for a in base["actions"])
+            # with an override dropping it ("" = skip), it must disappear from the plan
+            curated = _result_dict(await client.call_tool(
+                "apply_fixes",
+                {"pom_path": str(pom), "xlsx_path": ADVISORY, "app": "app-alpha",
+                 "overrides": {"io.netty:netty-handler": ""}}))
+            assert not any(a["coordinate"] == "io.netty:netty-handler" for a in curated["actions"])
+    _run(go())

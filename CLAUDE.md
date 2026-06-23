@@ -52,12 +52,21 @@ Standard `src/` package (`src/dep_remediation/`). `core/` is the deterministic e
 
 | Module | Phase | Purpose |
 |--------|-------|---------|
-| `core/advisory_parser.py` | 1 ✅ | Read Excel, apply filter chain, extract fields, dedupe → `Report` |
+| `core/advisory_parser.py` | 1 ✅ | Read Excel, apply filter chain, extract fields, dedupe → `Report`; `apply_overrides` curates a findings list for recovery |
 | `core/version_compare.py` | 2 ✅ | Maven-aware `compare()` / `version_key` / `max_version()` |
 | `core/pom_fixer.py` | 3 ✅ | Classify resolution (direct/property/managed/transitive) + apply upgrades to `pom.xml` (`plan_fixes`/`apply_fixes` → `FixResult`) |
-| `core/build_runner.py` | 4 ✅ | `mvn clean install` + `dependency:tree` resolution check (reactor-aware), green-build gating (`verify` → `BuildResult`) |
-| `cli.py` | ✅ | `dep-remediation` entry point — `parse` / `fix` / `verify` subcommands over `core/` |
-| `mcp_server.py` | 5 ✅ | `dep-remediation-mcp` FastMCP server; `parse_advisory` + `apply_fixes` + `verify_build` tools, protocol-tested |
+| `core/build_runner.py` | 4 ✅ | `mvn clean install` + `dependency:tree` resolution check (reactor-aware), green-build gating; `classify_failure` → `failure_kind`/`suspects` (`verify` → `BuildResult`) |
+| `cli.py` | ✅ | `dep-remediation` entry point — `parse` / `fix` (`--apply`/`--verify`/`--skip`/`--override`) / `verify` subcommands over `core/` |
+| `mcp_server.py` | 5 ✅ | `dep-remediation-mcp` FastMCP server; `parse_advisory` + `apply_fixes` (with `overrides`) + `verify_build` tools, protocol-tested |
+
+**Build-failure recovery is host-LLM-driven, not autonomous** (core stays deterministic /
+LLM-free). The engine supplies the *facts* — `classify_failure` (`build_runner.py`) turns a
+red Maven log into a `failure_kind` + suspect coordinates, and `apply_overrides`
+(`advisory_parser.py`) re-applies a curated fix set (`""` drops a finding → manual-review;
+any other value re-targets it). The *judgment* (what to retry) lives in the
+`remediate-dependencies` skill's bounded loop. The engine never reverts edits, so each
+recovery attempt re-applies to a clean copy. A green build with any finding unresolved is
+**needs-review**, never success. See `examples/spring-boot-sample/RECOVERY.md`.
 
 `core/advisory_parser.py` imports `core/version_compare.py` via a **relative** import
 (`from .version_compare import version_key`). Core modules are import-only (no argparse

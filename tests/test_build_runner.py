@@ -43,6 +43,31 @@ def test_interpret_build_fail_extracts_goal():
     assert "Compilation failure" in tail
 
 
+def test_classify_failure_resolution_extracts_suspect():
+    kind, suspects = br.classify_failure(_read("build-failure-resolution.txt"))
+    assert kind == br.DEPENDENCY_RESOLUTION
+    assert "org.apache.commons:commons-text" in suspects
+
+
+def test_classify_failure_compilation():
+    kind, suspects = br.classify_failure(_read("build-failure.txt"), failing_goal="compile")
+    assert kind == br.COMPILATION
+    assert suspects == []
+
+
+def test_classify_failure_unknown():
+    kind, suspects = br.classify_failure("some unrelated output", failing_goal="")
+    assert kind == br.UNKNOWN and suspects == []
+
+
+def test_verify_resolution_failure_sets_kind_and_suspects(tmp_path):
+    runner = _fake_runner(_read("build-failure-resolution.txt"), build_rc=1)
+    result = br.verify(str(tmp_path), _findings(), runner=runner)
+    assert not result.build_passed
+    assert result.failure_kind == br.DEPENDENCY_RESOLUTION
+    assert "org.apache.commons:commons-text" in result.suspects
+
+
 def test_parse_resolved_versions_single():
     m = br.parse_resolved_versions(_read("dependency-tree.txt"))
     assert m["io.netty:netty-handler"] == {"4.2.15.Final"}

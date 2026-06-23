@@ -128,6 +128,30 @@ def parse(xlsx_path: str, app: str, *, base_image_filter: bool = True) -> Report
     return rep
 
 
+def apply_overrides(findings, overrides) -> list:
+    """Return a curated copy of `findings` with per-coordinate overrides applied.
+
+    Used by the build-failure recovery loop: after a red build the host decides to drop
+    or re-target a finding, then re-applies the curated set. Deterministic — the *decision*
+    is the LLM's; this just performs it.
+
+    `overrides` maps a coordinate to a replacement recommended version. A falsy value
+    (`""`/`None`) **drops** that finding (skip → manual-review). Coordinates not present in
+    `findings` are ignored. The input list is not mutated.
+    """
+    overrides = overrides or {}
+    out = []
+    for f in findings:
+        if f.coordinate in overrides:
+            new_version = overrides[f.coordinate]
+            if not new_version:
+                continue  # skip → manual-review
+            out.append(Finding(f.coordinate, f.current_version, new_version))
+        else:
+            out.append(f)
+    return out
+
+
 def print_report(rep: Report):
     print(f"App: {rep.app}")
     print(f"  Rows in sheet:           {rep.rows_total}")

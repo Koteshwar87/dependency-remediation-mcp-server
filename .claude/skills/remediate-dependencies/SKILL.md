@@ -75,11 +75,36 @@ dep-remediation fix <pom.xml> --from-advisory <advisory.xlsx> --app <owner> --ap
 Point `verify` at the **aggregator root** for a multi-module reactor (resolution is
 checked across all modules). **Never report success unless the build is green AND every
 finding resolved to the recommended version** (`success` already encodes this; a pin can
-be silently overridden by a BOM → surfaced as needs-manual-review). On failure, relay the
-`log_tail`, `failing_goal`, and `attempted` culprits, then propose a fix and re-run
-`apply_fixes`/`verify_build` (this is the interactive recovery loop — the automated one is
-Phase 2). Honest limit: a green build proves it compiles, not that a forced transitive pin
-is runtime-safe.
+be silently overridden by a BOM → surfaced as needs-manual-review). Honest limit: a green
+build proves it compiles, not that a forced transitive pin is runtime-safe.
+
+### 4. Recovery loop when the build goes red (you drive this)
+
+The engine reports *facts*; you make the *judgment* about what to retry. Run a **bounded**
+loop (max ~3 attempts), always re-applying to a **fresh copy** of the project — the engine
+does **not** revert prior edits, so each attempt must start from a clean baseline pom.
+
+1. Apply the full fix set → `verify_build`. If green and all resolved → done.
+2. If red, read the structured failure: `failure_kind`, `suspects`, and `attempted`
+   (the bumps just applied — the likely culprits).
+3. Decide, per `failure_kind`:
+   - **`dependency_resolution`** (a recommended version can't be fetched — yanked / typo /
+     wrong repo): drop each `suspect` → manual-review. v1 does **not** auto-discover a
+     replacement; only re-target if the user/advisory gives a known-good version.
+   - **`compilation`** / **`test`**: the failure rarely names a coordinate — correlate with
+     `attempted` and drop the most likely culprit → manual-review (or re-target if you have
+     a known-good version). Prefer dropping one at a time so you learn which bump broke it.
+4. Re-apply the **curated** set to a fresh copy and `verify_build` again:
+   - CLI: `dep-remediation fix <pom> --from-advisory <xlsx> --app <owner> --apply \`
+     `  --skip <coord>` (drop) and/or `--override <coord>=<version>` (re-target), repeatable.
+   - MCP: `apply_fixes(..., overrides={"<coord>": ""})` to drop, `{"<coord>": "<version>"}`
+     to re-target.
+5. **Terminal:** report the green build, which findings were applied, and which went to
+   manual-review and why. A green build with any unresolved finding is **NEEDS REVIEW**, not
+   success. If still red after the cap, stop and report — **never** claim success on red.
+
+A captured end-to-end run is in `examples/spring-boot-sample/RECOVERY.md` (driven by
+`advisory-breaking.xlsx`).
 
 ## Guardrails
 
