@@ -49,6 +49,14 @@ def test_classify_failure_resolution_extracts_suspect():
     assert "org.apache.commons:commons-text" in suspects
 
 
+def test_classify_failure_resolution_cached_phrasing():
+    # Maven caches a prior not-found as "<gav> was not found" (seen in reactor re-runs);
+    # the project's own coordinate must NOT be picked up as a suspect.
+    kind, suspects = br.classify_failure(_read("build-failure-resolution-cached.txt"))
+    assert kind == br.DEPENDENCY_RESOLUTION
+    assert suspects == ["org.apache.commons:commons-text"]
+
+
 def test_classify_failure_compilation():
     kind, suspects = br.classify_failure(_read("build-failure.txt"), failing_goal="compile")
     assert kind == br.COMPILATION

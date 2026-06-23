@@ -14,55 +14,24 @@
     <groupId>com.example</groupId>
     <artifactId>spring-boot-sample</artifactId>
     <version>1.0.0</version>
-    <name>spring-boot-sample</name>
-    <description>Intentionally-vulnerable Spring Boot app - test bed for dep-remediation</description>
+    <packaging>pom</packaging>
+    <name>spring-boot-sample (reactor)</name>
+    <description>Intentionally-vulnerable multi-module Spring Boot app - test bed for dep-remediation</description>
 
     <properties>
         <java.version>17</java.version>
-        <!-- property-resolved version (PROPERTY class) - intentionally old -->
-        <commons-collections4.version>4.1</commons-collections4.version>
     </properties>
 
-    <dependencies>
-        <!-- Boot-managed starter; pulls in tomcat-embed-core transitively (TRANSITIVE class target) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
+    <modules>
+        <module>sample-core</module>
+        <module>sample-web</module>
+    </modules>
 
-        <!-- DIRECT class: literal <version>, not Boot-managed — intentionally old (CVE-2022-42889) -->
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-text</artifactId>
-            <version>1.9</version>
-        </dependency>
-
-        <!-- PROPERTY class: version sourced from a <properties> entry -->
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-collections4</artifactId>
-            <version>${commons-collections4.version}</version>
-        </dependency>
-
-        <!-- MANAGED class: declared without <version> — version owned by the Boot parent BOM -->
-        <dependency>
-            <groupId>org.yaml</groupId>
-            <artifactId>snakeyaml</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
+    <!--
+      Managed / transitive security pins belong HERE (the aggregator): a
+      <dependencyManagement> entry added here is inherited by every module. The committed
+      "before" state has none; the remediation step adds them. Findings whose version is
+      declared in a module (direct <version> / property) must be fixed in that module's pom
+      instead - an aggregator pin cannot override a module's explicit <version>.
+    -->
 </project>

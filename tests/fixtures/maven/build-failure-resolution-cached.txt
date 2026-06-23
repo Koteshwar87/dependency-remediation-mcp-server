@@ -1,0 +1,11 @@
+[INFO] Reactor Build Order:
+[INFO]     spring-boot-sample (reactor)
+[INFO]     sample-core
+[INFO]     sample-web
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[WARNING] The POM for org.apache.commons:commons-text:jar:99.0.0 is missing, no dependency information available
+[ERROR] Failed to execute goal on project sample-core: Could not resolve dependencies for project com.example:sample-core:jar:1.0.0: org.apache.commons:commons-text:jar:99.0.0 was not found in https://repo.maven.apache.org/maven2 during a previous attempt. This failure was cached in the local repository -> [Help 1]
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :sample-core

@@ -257,10 +257,13 @@ Tools exposed today:
 ### Try it end to end (example app)
 
 [`examples/spring-boot-sample/`](examples/spring-boot-sample/) is a real, intentionally
-**vulnerable** single-module Spring Boot app used as the end-to-end test bed — one seeded
-finding per resolution class (direct / property / managed / transitive). A captured run of
-parse → fix → green build + resolved-version check lives in
-[`examples/spring-boot-sample/SHAKEOUT.md`](examples/spring-boot-sample/SHAKEOUT.md).
+**vulnerable multi-module (reactor)** Spring Boot app used as the end-to-end test bed — one
+seeded finding per resolution class (direct / property / managed / transitive), spread across
+modules so the reactor-aware `verify` (build + cross-module resolution check at the aggregator
+root) is exercised on live Maven. Captured runs of the happy path and the build-failure
+recovery loop are in
+[`SHAKEOUT.md`](examples/spring-boot-sample/SHAKEOUT.md) and
+[`RECOVERY.md`](examples/spring-boot-sample/RECOVERY.md).
 
 ```bash
 dep-remediation parse examples/spring-boot-sample/advisory.xlsx --app sample-app

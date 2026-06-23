@@ -35,11 +35,16 @@ _FAILED_GOAL = re.compile(r"Failed to execute goal .*?:([\w\-]+)\s*\(")
 
 # Failure-classification signals (Maven log strings).
 _RESOLUTION_MARKERS = ("Could not resolve dependencies", "Could not find artifact",
-                       "Failure to find", "The following artifacts could not be resolved")
-# "Could not find artifact org.apache.commons:commons-text:jar:99.0.0 in central"
-_ARTIFACT_COORD = re.compile(
-    r"(?:Could not find artifact|could not be resolved)[^\n]*?"
-    r"([\w.\-]+):([\w.\-]+):(?:jar|pom|war|ear|maven-plugin|bundle|test-jar):([\w.\-]+)")
+                       "Failure to find", "could not be resolved", "was not found")
+_GAV = r"([\w.\-]+):([\w.\-]+):(?:jar|pom|war|ear|maven-plugin|bundle|test-jar):[\w.\-]+"
+# Maven phrases a missing artifact several ways; anchor on each so we don't pick up the
+# project's own coordinate (e.g. "...for project com.example:app:jar:1.0.0:"):
+#   "Could not find artifact org.apache.commons:commons-text:jar:99.0.0 in central"
+#   "org.apache.commons:commons-text:jar:99.0.0 was not found ..." (cached failure)
+_ARTIFACT_PATTERNS = (
+    re.compile(r"Could not find artifact " + _GAV),
+    re.compile(_GAV + r"\s+was not found"),
+)
 
 # Failure kinds.
 DEPENDENCY_RESOLUTION = "dependency_resolution"
@@ -97,10 +102,11 @@ def classify_failure(output: str, failing_goal: str = ""):
     """
     if any(marker in output for marker in _RESOLUTION_MARKERS):
         suspects = []
-        for group, artifact, _version in _ARTIFACT_COORD.findall(output):
-            coord = f"{group}:{artifact}"
-            if coord not in suspects:
-                suspects.append(coord)
+        for pattern in _ARTIFACT_PATTERNS:
+            for group, artifact in pattern.findall(output):
+                coord = f"{group}:{artifact}"
+                if coord not in suspects:
+                    suspects.append(coord)
         return DEPENDENCY_RESOLUTION, suspects
     if "COMPILATION ERROR" in output or failing_goal in ("compile", "testCompile"):
         return COMPILATION, []
